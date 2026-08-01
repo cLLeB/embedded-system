@@ -22,6 +22,7 @@
 #include "src/hal/HalIo.h"
 #include "src/hal/HalPins.h"
 #include "src/hal/HalProfileStore.h"
+#include "src/hal/HalTelemetry.h"
 
 using namespace smartsocket;
 
@@ -51,6 +52,7 @@ HalBuzzer g_buzzer(pins::Buzzer);
 HalButtons g_buttons(pins::ButtonNext, pins::ButtonAction);
 HalDisplay g_display(config::LcdI2cAddress, config::LcdColumns, config::LcdRows);
 HalProfileStore g_store(0);
+HalTelemetry g_telemetry(config::TelemetryBaud);
 
 #if SENSOR_MODE_AC
 AcRmsCurrentSensor g_sensor(pins::CurrentSensor);
@@ -87,6 +89,7 @@ void setup() {
   g_buzzer.begin();
   g_buttons.begin();
   g_display.begin();
+  g_telemetry.begin();
 
   g_display.showLine(0, "Smart Socket    ");
   g_display.showLine(1, "Calibrating...  ");
@@ -144,7 +147,18 @@ void loop() {
     refreshDisplay(true);
   }
 
+  // Remote commands are read before update() so a "cut now" from the phone acts
+  // on this tick rather than the next, and routed through the controller so they
+  // obey exactly the same transitions the buttons do.
+  const RemoteCommand remote = g_telemetry.takeCommand();
+  if (remote != Remote_None) {
+    g_controller.onRemote(remote);
+    refreshDisplay(true);
+  }
+
   g_controller.update();
+
+  g_telemetry.publish(g_controller.status(), now);
 
   BuzzerPattern alert;
   if (g_controller.takeAlert(alert)) {

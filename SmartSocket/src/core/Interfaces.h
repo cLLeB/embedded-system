@@ -13,6 +13,10 @@
 
 namespace smartsocket {
 
+// Defined in SocketController.h. Forward-declared rather than included because
+// that header includes this one, and ITelemetry only ever takes it by reference.
+struct SocketStatus;
+
 // Time source. Injected rather than calling millis() directly so tests can advance
 // time instantly instead of waiting for it.
 class IClock {
@@ -66,6 +70,32 @@ class IButtonSource {
 
   // true == physically pressed. Implementations hide active-low pull-up wiring.
   virtual bool isPressed(ButtonId id) const = 0;
+};
+
+// Commands a remote client can send. Deliberately an enum rather than a string:
+// the parsing belongs in the HAL, and the core should not learn that a wire
+// protocol exists any more than it has learned that a relay has a coil.
+enum RemoteCommand {
+  Remote_None = 0,
+  Remote_Cut,       // open the relay now
+  Remote_Rearm,     // clear a cutoff and arm
+  Remote_Probe,     // stop waiting, look for a load now
+  Remote_StatusNow  // send one status line immediately
+};
+
+// A link to something off-board - a phone, a PC, a serial monitor.
+//
+// Optional by construction: the socket is a complete product with no link
+// attached, so nothing in the state machine may depend on one being present.
+class ITelemetry {
+ public:
+  virtual ~ITelemetry() {}
+
+  // Offered every sample tick. Implementations decide their own rate.
+  virtual void publish(const SocketStatus& status, Millis nowMs) = 0;
+
+  // One pending command, or Remote_None. Consumed by the call.
+  virtual RemoteCommand takeCommand() = 0;
 };
 
 // Persistence for the learned device profile.

@@ -359,6 +359,38 @@ void SocketController::onButton(ButtonId id, ButtonEvent event) {
   }
 }
 
+void SocketController::onRemote(RemoteCommand command) {
+  switch (command) {
+    case Remote_Cut:
+      // Only from a state where power is actually on. "Cut" while already cut is
+      // not an error, it is a no-op - and re-entering Cutoff would restart the
+      // probe timer and re-announce a cutoff that already happened.
+      if (state_ == State_Idle || state_ == State_Settling ||
+          state_ == State_Charging || state_ == State_Probing) {
+        enter(State_Cutoff);
+      }
+      break;
+
+    case Remote_Rearm:
+      // Exactly what a short ACTION press does, including the EEPROM write that
+      // makes the saved time final. Sharing the path is the point.
+      onButton(Button_Action, ButtonEvent_ShortPress);
+      break;
+
+    case Remote_Probe:
+      // Skip the wait. Only meaningful while cut and blind.
+      if (state_ == State_Cutoff) {
+        enter(State_Probing);
+      }
+      break;
+
+    case Remote_StatusNow:
+    case Remote_None:
+    default:
+      break;
+  }
+}
+
 bool SocketController::takeAlert(BuzzerPattern& out) {
   if (!alertPending_) {
     return false;

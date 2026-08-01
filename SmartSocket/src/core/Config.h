@@ -320,6 +320,17 @@ const uint32_t ButtonLongPressMs = 1500;
 
 const uint32_t LcdRefreshMs = 500;
 
+// ---------------------------------------------------------------------------
+// Telemetry
+// ---------------------------------------------------------------------------
+// How often a status line goes out to whatever is listening. 1 s is fast enough
+// for a phone to feel live and slow enough that the link never becomes the
+// reason a sample was missed - the socket's job is watching the load, and a
+// radio is an optional accessory to that.
+const uint32_t TelemetryIntervalMs = 1000;
+
+const unsigned long TelemetryBaud = 9600;
+
 // Length of the power-on chirp. Long enough to be unmistakable, short enough not
 // to be irritating on every boot.
 const uint32_t BootChirpMs = 120;

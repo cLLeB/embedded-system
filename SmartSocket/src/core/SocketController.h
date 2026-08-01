@@ -42,6 +42,11 @@ class SocketController {
 
   void onButton(ButtonId id, ButtonEvent event);
 
+  // A command from a phone or a serial monitor. Deliberately routed through the
+  // same transitions the buttons use, so a remote client can never reach a state
+  // the panel cannot, and no safety rule has a second implementation.
+  void onRemote(RemoteCommand command);
+
   SocketStatus status() const;
   SocketState state() const { return state_; }
 

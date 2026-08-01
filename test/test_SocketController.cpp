@@ -698,3 +698,84 @@ TEST(a_tap_clears_a_stuck_relay_fault) {
   rig.controller.onButton(Button_Action, ButtonEvent_ShortPress);
   CHECK_EQ(rig.controller.state(), State_Idle);
 }
+
+// --- remote commands ---------------------------------------------------------
+//
+// A phone must not be able to reach a state the front panel cannot, so every
+// remote command routes through the same transitions the buttons use. These
+// pin that down.
+
+TEST(a_remote_cut_opens_the_relay_from_charging) {
+  Rig rig;
+  rig.controller.begin();
+  rig.startCharging(2000);
+  CHECK_EQ(rig.controller.state(), State_Charging);
+
+  rig.controller.onRemote(Remote_Cut);
+
+  CHECK_EQ(rig.controller.state(), State_Cutoff);
+  CHECK_FALSE(rig.relay.isClosed());
+}
+
+TEST(a_remote_cut_while_already_cut_changes_nothing) {
+  Rig rig;
+  cutOffLeaving(rig, 300);
+  const uint16_t before = rig.controller.status().cutoffCount;
+
+  // Re-entering Cutoff would restart the probe timer and re-announce a cutoff
+  // that already happened. "Cut" when already cut is a no-op, not an error.
+  rig.controller.onRemote(Remote_Cut);
+
+  CHECK_EQ(rig.controller.state(), State_Cutoff);
+  CHECK_EQ(rig.controller.status().cutoffCount, before);
+}
+
+TEST(a_remote_rearm_takes_the_same_path_as_the_action_button) {
+  Rig rig;
+  cutOffLeaving(rig, 300);
+  CHECK_EQ(rig.controller.state(), State_Cutoff);
+
+  rig.controller.onRemote(Remote_Rearm);
+
+  CHECK_EQ(rig.controller.state(), State_Idle);
+  CHECK(rig.relay.isClosed());
+}
+
+TEST(a_remote_probe_skips_the_wait) {
+  Rig rig;
+  cutOffLeaving(rig, 300);
+
+  // Without this the socket would sit blind for fifteen minutes before looking.
+  rig.controller.onRemote(Remote_Probe);
+
+  CHECK_EQ(rig.controller.state(), State_Probing);
+  CHECK(rig.relay.isClosed());
+}
+
+TEST(a_remote_probe_is_ignored_unless_the_socket_is_cut) {
+  Rig rig;
+  rig.controller.begin();
+  rig.startCharging(2000);
+
+  // Probing is how a blind socket looks around. Mid-charge it can already see.
+  rig.controller.onRemote(Remote_Probe);
+
+  CHECK_EQ(rig.controller.state(), State_Charging);
+}
+
+TEST(no_remote_command_can_clear_a_stuck_relay_without_a_human) {
+  Rig rig;
+  cutOffLeaving(rig, 300);
+  rig.stuckRelay = true;
+  rig.run(2000, config::RelayStuckGraceMs + config::RelayStuckConfirmMs +
+                    (4 * config::SampleIntervalMs));
+  CHECK_EQ(rig.controller.state(), State_RelayStuck);
+
+  // Cut and probe must not touch it. A welded contact needs someone to look at
+  // the hardware, and a phone tapping "re-arm" from another room is not that.
+  rig.controller.onRemote(Remote_Cut);
+  CHECK_EQ(rig.controller.state(), State_RelayStuck);
+
+  rig.controller.onRemote(Remote_Probe);
+  CHECK_EQ(rig.controller.state(), State_RelayStuck);
+}
