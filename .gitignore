@@ -1,0 +1,17 @@
+# Native test build output. Regenerate with test\run_tests.ps1.
+build/
+
+# Arduino IDE build cache, if it is ever pointed inside the tree.
+*.hex
+*.elf
+
+# Python / tooling caches from the enclosure generator.
+__pycache__/
+*.pyc
+.ruff_cache/
+
+# Editor and OS noise.
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

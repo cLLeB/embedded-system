@@ -1,0 +1,27 @@
+==============================================================================
+Smart Socket enclosure  -  Group 38
+==============================================================================
+Layout check PASS: no overlaps, no boss clashes, nothing too tall,
+               LCD/button clearance ok, switch volume clear.
+
+   floor pockets: 2 x 17 mm, 1.2 mm deep
+Exports:
+  SmartSocket_Base.stl            170.0 x  176.0 x  58.8 mm    174.6 cm3   10652 tri  solid=True
+  SmartSocket_Lid.stl             170.0 x  176.0 x   8.2 mm     42.0 cm3   29752 tri  solid=True
+  SmartSocket_Shelf.stl           166.2 x  113.4 x  34.4 mm     57.3 cm3    2500 tri  solid=True
+  SmartSocket_FitCheck.stl        150.0 x  140.0 x  11.6 mm     31.4 cm3   10392 tri  solid=True
+  SmartSocket_Assembly.stl        170.0 x  176.0 x  61.0 mm    273.9 cm3   42752 tri  solid=True
+
+Assembled outer size : 170.0 x 176.0 x 61.0 mm
+Interior clear       : 166.0 x 172.0 x 56.4 mm
+  front zone (LV)    : Y 0..58.0, full height
+  lower deck (LV)    : Y 58.0..172.0, Z 0..22.0
+  mains deck (230 V) : Y 60.0..172.0, Z 24.4..56.4
+
+Base                 :  174.6 cm3  (~217 g)
+Lid                  :   42.0 cm3  (~ 52 g)
+Shelf                :   57.3 cm3  (~ 71 g)
+----------------------------------------------
+TOTAL TO PRINT (3)   :  273.9 cm3  (~340 g)  = 849 GHS at 2.50/g
+Fit-check coupon     :   31.4 cm3  (~ 39 g)  optional, not printed
+==============================================================================
