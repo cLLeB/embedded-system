@@ -8,39 +8,36 @@ import android.content.IntentFilter
 import android.os.BatteryManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import gh.group38.smartsocket.data.BluetoothTransport
 import gh.group38.smartsocket.data.LinkState
 import gh.group38.smartsocket.data.MockTransport
 import gh.group38.smartsocket.data.SocketCommand
 import gh.group38.smartsocket.data.SocketDevice
-import gh.group38.smartsocket.data.SocketState
 import gh.group38.smartsocket.data.SocketStatus
-import gh.group38.smartsocket.data.SocketTransport
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-enum class Screen { SPLASH, ONBOARDING, CONNECT, CONNECTING, DASHBOARD }
+enum class Screen { SPLASH, ONBOARDING, CONNECT, CONNECTING, DASHBOARD, HISTORY }
 
+/**
+ * Screen state and the phone's own battery.
+ *
+ * The link itself lives in [gh.group38.smartsocket.data.SocketRepository] on the
+ * Application, not here - a connection owned by a ViewModel dies with the
+ * screen, and can only notify someone already looking at it.
+ */
 class SocketViewModel(app: Application) : AndroidViewModel(app) {
 
     private val prefs = app.getSharedPreferences("smart_socket", Context.MODE_PRIVATE)
-
-    private val bluetooth = BluetoothTransport(app, viewModelScope)
-    private val mock = MockTransport(viewModelScope)
-    private var active: SocketTransport = bluetooth
-    private var collectors: Job? = null
+    private val repo = (app as SmartSocketApp).repository
 
     private val _screen = MutableStateFlow(Screen.SPLASH)
     val screen: StateFlow<Screen> = _screen.asStateFlow()
 
-    private val _status = MutableStateFlow(SocketStatus.UNKNOWN)
-    val status: StateFlow<SocketStatus> = _status.asStateFlow()
-
-    private val _linkState = MutableStateFlow<LinkState>(LinkState.Idle)
-    val linkState: StateFlow<LinkState> = _linkState.asStateFlow()
+    val status: StateFlow<SocketStatus> = repo.status
+    val linkState: StateFlow<LinkState> = repo.linkState
+    val history = repo.history.sessions
 
     private val _devices = MutableStateFlow<List<SocketDevice>>(emptyList())
     val devices: StateFlow<List<SocketDevice>> = _devices.asStateFlow()
@@ -54,10 +51,9 @@ class SocketViewModel(app: Application) : AndroidViewModel(app) {
     private val _batteryLimit = MutableStateFlow(prefs.getInt(KEY_LIMIT, 90))
     val batteryLimit: StateFlow<Int> = _batteryLimit.asStateFlow()
 
-    val connectedName: String
-        get() = (_linkState.value as? LinkState.Connected)?.device?.name ?: "Socket"
+    val connectedName: String get() = repo.deviceName
 
-    /** Set once per connection, so crossing the limit only fires a cut once. */
+    /** Set once per connection, so crossing the limit only fires one cut. */
     private var limitHandled = false
 
     private val batteryReceiver = object : BroadcastReceiver() {
@@ -73,18 +69,41 @@ class SocketViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         app.registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+
+        // Follow the link, so a drop while the app is open returns to the picker
+        // and the foreground service is not left running for nothing.
+        viewModelScope.launch {
+            repo.linkState.collect { state ->
+                when (state) {
+                    is LinkState.Connected -> {
+                        SocketService.start(getApplication())
+                        if (_screen.value == Screen.CONNECTING) _screen.value = Screen.DASHBOARD
+                    }
+
+                    is LinkState.Connecting -> _screen.value = Screen.CONNECTING
+
+                    else -> {
+                        SocketService.stop(getApplication())
+                        if (_screen.value == Screen.DASHBOARD || _screen.value == Screen.CONNECTING) {
+                            _screen.value = Screen.CONNECT
+                        }
+                    }
+                }
+            }
+        }
     }
 
     override fun onCleared() {
         runCatching { getApplication<Application>().unregisterReceiver(batteryReceiver) }
-        bluetooth.disconnect()
-        mock.disconnect()
         super.onCleared()
     }
 
     fun onSplashDone() {
-        _screen.value =
-            if (prefs.getBoolean(KEY_ONBOARDED, false)) Screen.CONNECT else Screen.ONBOARDING
+        _screen.value = when {
+            repo.isConnected -> Screen.DASHBOARD
+            prefs.getBoolean(KEY_ONBOARDED, false) -> Screen.CONNECT
+            else -> Screen.ONBOARDING
+        }
     }
 
     fun onOnboardingDone() {
@@ -98,41 +117,30 @@ class SocketViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun refreshDevices() {
-        _devices.value = if (_permissionGranted.value) bluetooth.pairedDevices() else emptyList()
+        _devices.value = if (_permissionGranted.value) repo.pairedDevices() else emptyList()
     }
 
-    fun bluetoothOn(): Boolean = bluetooth.isBluetoothOn()
+    fun bluetoothOn(): Boolean = repo.bluetoothOn()
 
-    fun connect(device: SocketDevice) = start(bluetooth, device)
-
-    fun openDemo() = start(mock, MockTransport.DEVICE)
-
-    private fun start(transport: SocketTransport, device: SocketDevice) {
-        collectors?.cancel()
-        active = transport
+    fun connect(device: SocketDevice) {
         limitHandled = false
         _screen.value = Screen.CONNECTING
-
-        collectors = viewModelScope.launch {
-            launch {
-                transport.linkState.collect { state ->
-                    _linkState.value = state
-                    _screen.value = when (state) {
-                        is LinkState.Connected -> Screen.DASHBOARD
-                        is LinkState.Connecting -> Screen.CONNECTING
-                        else -> Screen.CONNECT
-                    }
-                }
-            }
-            launch { transport.status.collect { _status.value = it } }
-        }
-
-        viewModelScope.launch { transport.connect(device) }
+        repo.connect(device)
     }
 
-    fun send(command: SocketCommand) {
-        viewModelScope.launch { active.send(command) }
+    fun openDemo() = connect(MockTransport.DEVICE)
+
+    fun send(command: SocketCommand) = repo.send(command)
+
+    fun openHistory() {
+        _screen.value = Screen.HISTORY
     }
+
+    fun closeHistory() {
+        _screen.value = if (repo.isConnected) Screen.DASHBOARD else Screen.CONNECT
+    }
+
+    fun clearHistory() = repo.history.clear()
 
     fun setBatteryLimit(limit: Int) {
         _batteryLimit.value = limit
@@ -142,11 +150,7 @@ class SocketViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun disconnect() {
-        collectors?.cancel()
-        collectors = null
-        active.disconnect()
-        _status.value = SocketStatus.UNKNOWN
-        _linkState.value = LinkState.Idle
+        repo.disconnect()
         _screen.value = Screen.CONNECT
         refreshDevices()
     }
@@ -154,15 +158,15 @@ class SocketViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * The feature the sensor cannot provide.
      *
-     * A phone charging on 230 V draws about 20 mA, which is inside the ACS712's
-     * noise - the socket genuinely cannot tell a charging phone from an empty
-     * outlet. But the phone knows its own battery, so it says so.
+     * A phone charging on 230 V draws about 20 mA, inside the ACS712's noise, so
+     * the socket cannot tell a charging phone from an empty outlet. The phone
+     * knows its own battery, so it says so.
      */
     private fun maybeCutForBattery() {
         if (limitHandled) return
-        if (_linkState.value !is LinkState.Connected) return
+        if (!repo.isConnected) return
         if (_batteryPercent.value < _batteryLimit.value) return
-        if (!_status.value.state.isPowerOn) return
+        if (!repo.status.value.state.isPowerOn) return
 
         limitHandled = true
         send(SocketCommand.CUT)

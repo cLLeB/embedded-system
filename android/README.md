@@ -30,6 +30,8 @@ minSdk 26. `local.properties` points at the SDK.
 | **Live status** | State, current, peak, and how close the current is to the cutoff threshold |
 | **Control** | Cut power, re-arm, probe now — the same three commands the buttons give |
 | **Charge limit** | Stop charging **this phone** at 80 / 90 / 100% |
+| **Notifications** | Tells you when power was cut, even with the app closed |
+| **History** | Every cutoff, with peak, taper point and duration, plus a chart |
 | **Demo mode** | A simulated socket, for when the real one is in another room |
 
 ### The charge limit is the point
@@ -108,10 +110,41 @@ this fall past that line", and a number alone does not show how close it is.
 
 ---
 
+## Staying alive in the background
+
+`SocketRepository` is held by the **Application**, not a ViewModel. That is the
+whole trick: a link owned by a ViewModel dies with the screen, and can only
+notify someone already looking at it.
+
+`SocketService` is a foreground service that keeps the process alive while a
+connection is up. It does not own the link — it exists so Android does not kill
+the process, and so there is something to look at while it runs. Started on
+connect, stopped on disconnect, because a notification the user cannot dismiss
+should only be there while it is buying something.
+
+Android 14 requires a foreground service to declare a type and hold the matching
+permission; `connectedDevice` is the honest one here.
+
+`SocketRepository` is also the only place that watches for **transitions**
+rather than state — a cutoff notification has to fire on the edge into `Cutoff`,
+once, not on every status line that happens to say `Cutoff`.
+
+## History without Room
+
+`HistoryStore` writes comma-separated lines to a file in `filesDir`, newest
+first, capped at 60.
+
+Room would bring the KSP plugin, a schema, a DAO and migrations for a table with
+four integer columns that will never hold more than 60 rows. The cost is all
+ceremony. Reads are one `readLines`, writes one `writeText`, and the format is
+legible if anyone wants to look at it.
+
+The chart is bars, not a line: each charge is a discrete event, and a line
+between them would imply values in the gaps that were never measured.
+
 ## Not built yet
 
-- Foreground service, so the link survives the app being backgrounded
-- Notification when power is cut
-- Charge history and graphs (Room)
-- Connecting to the socket has never been tested against real hardware, because
-  there is no HC-05 yet. Everything else runs
+- **Connecting to real hardware has never been tested**, because there is no
+  HC-05 yet. Everything else runs
+- Reconnecting automatically after the link drops
+- Exporting history

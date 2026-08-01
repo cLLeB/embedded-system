@@ -18,12 +18,21 @@
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+      Android 14 requires a foreground service to declare a type, and to hold the
+      matching permission. connectedDevice is the honest one: the service exists
+      to hold a Bluetooth link open while the app is not on screen.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+
     <!-- Classic SPP, not BLE. An HC-05 is a Bluetooth 2.0 device. -->
     <uses-feature
         android:name="android.hardware.bluetooth"
         android:required="false" />
 
     <application
+        android:name=".SmartSocketApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
@@ -42,6 +51,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".SocketService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
     </application>
 
 </manifest>

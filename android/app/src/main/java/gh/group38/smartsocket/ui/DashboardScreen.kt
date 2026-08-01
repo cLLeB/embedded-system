@@ -39,6 +39,7 @@ fun DashboardScreen(
     onCommand: (SocketCommand) -> Unit,
     onBatteryLimit: (Int) -> Unit,
     onDisconnect: () -> Unit,
+    onHistory: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val tint = status.state.tint()
@@ -198,7 +199,18 @@ fun DashboardScreen(
 
         // --- lifetime --------------------------------------------------------
         Panel(modifier = Modifier.fillMaxWidth()) {
-            FieldLabel("Lifetime")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                FieldLabel("Lifetime")
+                Text(
+                    text = "History",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Gold,
+                    modifier = Modifier.clickableNoRipple(onHistory),
+                )
+            }
             Spacer(Modifier.height(16.dp))
             Row(modifier = Modifier.fillMaxWidth()) {
                 Stat(

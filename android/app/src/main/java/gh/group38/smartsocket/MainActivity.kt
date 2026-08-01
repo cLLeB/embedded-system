@@ -30,6 +30,7 @@ import gh.group38.smartsocket.data.LinkState
 import gh.group38.smartsocket.ui.ConnectScreen
 import gh.group38.smartsocket.ui.ConnectingScreen
 import gh.group38.smartsocket.ui.DashboardScreen
+import gh.group38.smartsocket.ui.HistoryScreen
 import gh.group38.smartsocket.ui.Ink
 import gh.group38.smartsocket.ui.OnboardingScreen
 import gh.group38.smartsocket.ui.SmartSocketTheme
@@ -44,7 +45,21 @@ class MainActivity : ComponentActivity() {
      * manifest permissions are granted at install, so there is nothing to ask
      * for and the request must be skipped rather than failed.
      */
-    private val permissions: Array<String> =
+    private val permissions: Array<String> = buildList {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            add(Manifest.permission.BLUETOOTH_CONNECT)
+            add(Manifest.permission.BLUETOOTH_SCAN)
+        }
+        // 13+ made notifications opt-in. Asked for alongside Bluetooth rather
+        // than at the moment of the first cutoff, which would be the worst
+        // possible time to interrupt with a dialog.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }.toTypedArray()
+
+    /** Bluetooth is what gates the device list; notifications are a bonus. */
+    private val bluetoothPermissions: Array<String> =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
         } else {
@@ -52,8 +67,10 @@ class MainActivity : ComponentActivity() {
         }
 
     private val requestPermissions =
-        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-            vm.onPermissionResult(result.values.all { it })
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ ->
+            // Judged on Bluetooth only. Refusing notifications should not lock
+            // the user out of the device list.
+            vm.onPermissionResult(hasPermissions())
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -83,7 +100,7 @@ class MainActivity : ComponentActivity() {
         vm.refreshDevices()
     }
 
-    private fun hasPermissions(): Boolean = permissions.all {
+    private fun hasPermissions(): Boolean = bluetoothPermissions.all {
         ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
     }
 
@@ -105,6 +122,7 @@ private fun App(vm: SocketViewModel, onRequestPermissions: () -> Unit) {
     val granted by vm.permissionGranted.collectAsState()
     val battery by vm.batteryPercent.collectAsState()
     val limit by vm.batteryLimit.collectAsState()
+    val history by vm.history.collectAsState()
 
     AnimatedContent(
         targetState = screen,
@@ -137,6 +155,14 @@ private fun App(vm: SocketViewModel, onRequestPermissions: () -> Unit) {
                 onCommand = vm::send,
                 onBatteryLimit = vm::setBatteryLimit,
                 onDisconnect = vm::disconnect,
+                onHistory = vm::openHistory,
+                modifier = Modifier.windowInsetsPadding(WindowInsets.systemBars),
+            )
+
+            Screen.HISTORY -> HistoryScreen(
+                sessions = history,
+                onBack = vm::closeHistory,
+                onClear = vm::clearHistory,
                 modifier = Modifier.windowInsetsPadding(WindowInsets.systemBars),
             )
         }
