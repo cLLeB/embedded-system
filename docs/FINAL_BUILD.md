@@ -737,10 +737,35 @@ you can reflash without opening the box.
 
 ### STEP 53 — Lid parts
 
-LCD onto its four bosses. Hot-glue the two buttons and the buzzer into their
-collars from underneath. Move them off the breadboard and wire them back to the
-same columns with **150 mm of slack**, so the lid lifts off and sits beside the
-box without pulling anything loose.
+LCD onto its four bosses.
+
+**The buttons and buzzer come off the breadboard and go into the lid.** The lid
+has a collar for each: the body seats up inside the pocket and only the plunger
+pokes through the 8 mm hole, so you press it from outside a closed box. Hot-glue
+each one in from underneath.
+
+Then wire them back down with **150 mm of slack**, so the lid lifts off and sits
+beside the box without pulling anything loose:
+
+| From | To |
+|---|---|
+| Button 1, a leg on one face | Uno digital **2** |
+| Button 1, a leg on the **opposite** face | `−` rail |
+| Button 2, a leg on one face | Uno digital **3** |
+| Button 2, a leg on the **opposite** face | `−` rail |
+| Buzzer, either leg | column 12, lower block |
+| Buzzer, other leg | `−` rail |
+
+**The channel rule from STEP 7 no longer applies** — it only existed because the
+button's legs bridged the breadboard's centre channel. What survives is the
+reason behind it: the two legs on the same face are joined inside the body, so
+take one from each face or the pin is tied permanently to ground.
+
+**Getting wire onto the legs.** Solder is the right answer — six joints, fifteen
+minutes, and the buzzer's thin round leads grip nothing else well. Borrow an iron
+if you can. Failing that, a female Dupont end pushes onto the 12 mm buttons' flat
+legs and grips well enough if you tape over it; if a button dies after assembly,
+suspect that first.
 
 ### STEP 54 — Socket into the lid
 
