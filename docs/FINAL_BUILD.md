@@ -716,8 +716,24 @@ socket will sit. Connect the six signal wires you fed up in STEP 49.
 
 ### STEP 52 — Mains cord
 
-In through the back wall, above the shelf. **Tie a knot inside** so a pull on
-the lead cannot pull on a screw terminal.
+In through the round hole in the **back wall, above the shelf**. Beside it are
+two small holes: thread a cable tie through them, round the cord, and cinch it.
+That is the strain relief — a pull on the lead must never reach a screw terminal.
+
+**The mains cord does not share an opening with anything else.** Each lead has
+its own wall, and that separation is the point:
+
+| Wall | Carries | Deck |
+|---|---|---|
+| **Back** | mains cord, 230 V | above the shelf |
+| **Left** | Arduino USB, 5 V | front zone, low voltage |
+| **Front** | rocker switch | — |
+
+The Arduino's opening is one wide 15 mm slot cut deliberately loose: the board's
+position is exact because the standoffs fix it, but where the USB socket and
+barrel jack sit along that edge varies between clones, and one opening clears
+both. So the USB lead from the phone charger goes straight in the left wall, and
+you can reflash without opening the box.
 
 ### STEP 53 — Lid parts
 
