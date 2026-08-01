@@ -67,18 +67,20 @@ const uint16_t DcAverageSamples = 64;
 // Readings below this are clamped to zero rather than pretending to precision we
 // do not have.
 //
-// TEMPORARILY 0 - THIS IS A MEASUREMENT BUILD, NOT A RELEASE.
+// 30 mA, MEASURED, not assumed. With the clamp temporarily removed an empty
+// socket read 0.00 A for five minutes with a single excursion to 0.02 - so the
+// pedestal is under one ADC count, and this sits at 1.5x the worst reading seen.
 //
-// 60 was inherited from the battery rig and assumed one reading = one ADC count
-// = 26 mA. That is wrong for AC mode: AcRmsCurrentSensor sums squares over a
-// 60 ms window, which is roughly 500 samples, so the RMS estimate resolves well
-// below a single count. The true floor is whatever an empty socket actually
-// reads, and nobody has measured it.
+// The old value was 60, inherited from the battery rig, and it assumed one
+// reading equals one ADC count equals 26 mA. That is wrong for AC mode:
+// AcRmsCurrentSensor sums squares over roughly 500 samples, and averaging drives
+// quantisation noise well below a single count.
 //
-// Set to 0 so the clamp is out of the way, read an empty socket, then set this
-// just above whatever it shows. Everything below 60 mA - which is every phone
-// on 230 V - depends on getting this right.
-const int32_t NoiseFloorMa = 0;
+// It was also masking a real bug. Before the zero offset was fixed - calibrated
+// with the relay open, then frozen at boot - an empty socket read 0.08-0.13 A
+// and drifted. A 60 mA floor hid that most of the time, which is exactly what a
+// noise floor should never be used for.
+const int32_t NoiseFloorMa = 30;
 
 // ---------------------------------------------------------------------------
 // Charge detection thresholds
