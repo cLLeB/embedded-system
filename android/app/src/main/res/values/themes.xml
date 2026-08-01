@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      A plain dark base. Everything visible is drawn by Compose against the
+      palette in ui/Theme.kt; this exists only so the window background matches
+      before the first frame and the launch does not flash white.
+    -->
+    <style name="Theme.SmartSocket" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/ink</item>
+        <item name="android:statusBarColor">@color/ink</item>
+        <item name="android:navigationBarColor">@color/ink</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

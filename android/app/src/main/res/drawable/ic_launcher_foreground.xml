@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A UK socket face: earth pin top centre, live and neutral horizontal below.
+  Chosen over a generic power symbol because it says which product this is at a
+  glance, and it survives being 48 px on a home screen - three bars and an
+  outline, nothing that turns to mush.
+
+  Everything sits inside the 72 dp safe zone (18..90), so no launcher mask can
+  clip a pin off.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Faceplate outline -->
+    <path
+        android:strokeColor="#D4A537"
+        android:strokeWidth="5"
+        android:strokeLineJoin="round"
+        android:pathData="M38,26 H70 A14,14 0 0 1 84,40 V68 A14,14 0 0 1 70,82 H38 A14,14 0 0 1 24,68 V40 A14,14 0 0 1 38,26 Z" />
+
+    <!-- Earth -->
+    <path
+        android:strokeColor="#D4A537"
+        android:strokeWidth="8"
+        android:strokeLineCap="round"
+        android:pathData="M54,40 V50" />
+
+    <!-- Live -->
+    <path
+        android:strokeColor="#D4A537"
+        android:strokeWidth="8"
+        android:strokeLineCap="round"
+        android:pathData="M38,64 H48" />
+
+    <!-- Neutral -->
+    <path
+        android:strokeColor="#D4A537"
+        android:strokeWidth="8"
+        android:strokeLineCap="round"
+        android:pathData="M60,64 H70" />
+</vector>

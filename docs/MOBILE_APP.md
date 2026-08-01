@@ -1,7 +1,13 @@
 # Mobile app — specification and plan
 
-Nothing in this document is built yet. It is the design, the reasoning behind it,
-and the order to build it in.
+> **Status: built.** The app lives in [`android/`](../android) — see
+> [`android/README.md`](../android/README.md) for how to build it and what it
+> does. The firmware side (`ITelemetry` / `HalTelemetry`) is in and tested.
+>
+> What remains untested is the only part that needs hardware: **connecting to a
+> real HC-05.** Everything else runs today, against `MockTransport`.
+>
+> This document is kept as the reasoning behind the design, not as a to-do list.
 
 Target: **Android**, native.
 
