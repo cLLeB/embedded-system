@@ -112,28 +112,58 @@ fun DashboardScreen(
         Spacer(Modifier.height(30.dp))
 
         // --- the number ------------------------------------------------------
+        // THE BIG NUMBER IS WHATEVER IS ACTUALLY WORTH KNOWING.
+        //
+        // It used to be the current, always. On a phone that is a guaranteed
+        // 0.00 A - charging draws about 20 mA, below one ADC count on the
+        // ACS712-5A - so the screen's largest, most confident element was a
+        // permanent zero, and it read as a fault rather than as a limit of the
+        // sensor. When the socket cannot see the load, the battery percentage is
+        // the number the user came to the app for.
+        val showBatteryInstead = phoneCharging && status.state == SocketState.READY
+
         Panel(accent = status.state.isAlarm, modifier = Modifier.fillMaxWidth()) {
-            StatePill(label = status.state.label, tint = tint)
+            StatePill(
+                label = if (showBatteryInstead) "CHARGING" else status.state.label,
+                tint = tint,
+            )
             Spacer(Modifier.height(22.dp))
 
-            val amps by animateFloatAsState(
-                targetValue = status.amps,
-                animationSpec = tween(600),
-                label = "amps",
-            )
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    text = String.format(Locale.UK, "%.2f", amps),
-                    style = MaterialTheme.typography.displayLarge,
-                    color = Bone,
+            if (showBatteryInstead) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = "$batteryPercent",
+                        style = MaterialTheme.typography.displayLarge,
+                        color = Bone,
+                    )
+                    Text(
+                        text = "%",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Light,
+                        color = Muted,
+                        modifier = Modifier.padding(start = 8.dp, bottom = 12.dp),
+                    )
+                }
+            } else {
+                val amps by animateFloatAsState(
+                    targetValue = status.amps,
+                    animationSpec = tween(600),
+                    label = "amps",
                 )
-                Text(
-                    text = "A",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Light,
-                    color = Muted,
-                    modifier = Modifier.padding(start = 8.dp, bottom = 12.dp),
-                )
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = String.format(Locale.UK, "%.2f", amps),
+                        style = MaterialTheme.typography.displayLarge,
+                        color = Bone,
+                    )
+                    Text(
+                        text = "A",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Light,
+                        color = Muted,
+                        modifier = Modifier.padding(start = 8.dp, bottom = 12.dp),
+                    )
+                }
             }
 
             Spacer(Modifier.height(6.dp))
@@ -144,10 +174,14 @@ fun DashboardScreen(
                 // below a single ADC count on the ACS712-5A, and below
                 // NoiseFloorMa - so the socket reads a true zero and concludes
                 // the outlet is empty. The phone knows better, so it says so.
-                text = if (phoneCharging && status.state == SocketState.READY) {
-                    "Your phone is charging. The socket can't see it — 20 mA is " +
-                        "smaller than its sensor can measure, which is why this " +
-                        "app exists."
+                text = if (showBatteryInstead) {
+                    if (appManaging) {
+                        "Charging to $batteryLimit%. The socket can't measure a phone, " +
+                            "so this app tells it when to stop."
+                    } else {
+                        "Charging. The socket can't measure a phone — turn on app " +
+                            "management below to have it stopped at a percentage."
+                    }
                 } else {
                     status.state.detail
                 },

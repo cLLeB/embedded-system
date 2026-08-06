@@ -54,7 +54,11 @@ void appendStr(char* dst, uint8_t& pos, uint8_t size, const char* src) {
 
 }  // namespace
 
-UiPresenter::UiPresenter() : screen_(Screen_Status), batteryPercent_(-1) {}
+UiPresenter::UiPresenter()
+    : screen_(Screen_Status),
+      batteryPercent_(-1),
+      batteryLimit_(-1),
+      clientCharging_(false) {}
 
 void UiPresenter::nextScreen() {
   screen_ = static_cast<UiScreen>((screen_ + 1) % Screen_Count);
@@ -82,25 +86,57 @@ void UiPresenter::renderStatus(const SocketStatus& s, char* l0, char* l1) const 
     appendStr(right, pos, sizeof(right), "A");
   }
 
-  composeLR(format::stateName(s.state), right, l0);
+  // "Ready" is what the socket honestly believes with a phone charging on it,
+  // and it is the one case where believing the socket misleads the person
+  // reading the display. Only Idle is overridden: a cutoff, a fault or a stuck
+  // relay must always speak for itself, whatever a client claims.
+  const char* label = (clientCharging_ && s.state == State_Idle)
+                          ? "Charging"
+                          : format::stateName(s.state);
+
+  composeLR(label, right, l0);
 
   char elapsed[10];
   format::duration(s.sessionElapsedMs, elapsed, sizeof(elapsed));
 
-  // How long this charge has been running, and - only once the percentage has
-  // taken the top line - the live current underneath it.
+  // The second line answers "and then what happens".
   //
-  // The session peak used to sit here when there was no client. It is gone on
-  // purpose: peak current is a number for diagnosing the algorithm, not for
-  // someone glancing at a socket to see how their laptop is doing. Better an
-  // empty half-line than a figure that means nothing to whoever is reading it.
+  // With no session running, elapsed is zero and a row of 00:00:00 says nothing.
+  // What the person actually wants to know at that point is where this stops -
+  // so if a client has told the socket its cut percentage, that goes here
+  // instead. The current is only shown once the percentage has taken the top
+  // line, and never for a phone, where it is a guaranteed 0.00 A.
+  //
+  // The session peak used to sit here. It is gone on purpose: peak current is a
+  // number for diagnosing the algorithm, not for someone glancing at a socket.
   pos = 0;
   right[0] = '\0';
 
-  if (batteryPercent_ >= 0) {
-    format::amps(s.currentMa, amps, sizeof(amps));
-    appendStr(right, pos, sizeof(right), amps);
-    appendStr(right, pos, sizeof(right), "A");
+  const bool sessionRunning = s.sessionElapsedMs > 0;
+
+  if (sessionRunning) {
+    if (batteryPercent_ >= 0) {
+      format::amps(s.currentMa, amps, sizeof(amps));
+      appendStr(right, pos, sizeof(right), amps);
+      appendStr(right, pos, sizeof(right), "A");
+    }
+    composeLR(elapsed, right, l1);
+    return;
+  }
+
+  if (batteryLimit_ >= 0) {
+    char limit[8];
+    format::number(static_cast<uint16_t>(batteryLimit_), limit, sizeof(limit));
+
+    char left[14];
+    uint8_t leftPos = 0;
+    left[0] = '\0';
+    appendStr(left, leftPos, sizeof(left), "Cuts at ");
+    appendStr(left, leftPos, sizeof(left), limit);
+    appendStr(left, leftPos, sizeof(left), "%");
+
+    composeLR(left, "", l1);
+    return;
   }
 
   composeLR(elapsed, right, l1);

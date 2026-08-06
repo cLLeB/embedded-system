@@ -253,6 +253,21 @@ void loop() {
     refreshDisplay(true);
   }
 
+  const int16_t limit = g_telemetry.takeBatteryLimit();
+  if (limit >= 0) {
+    g_ui.setBatteryLimit(limit);
+    refreshDisplay(true);
+  }
+
+  // The one fact the sensor cannot supply. A phone charging draws about 20 mA,
+  // below a single ADC count, so without this the display says "Ready - waiting
+  // for something to be plugged in" over an outlet that is charging one.
+  const int8_t charging = g_telemetry.takeClientCharging();
+  if (charging >= 0) {
+    g_ui.setClientCharging(charging == 1);
+    refreshDisplay(true);
+  }
+
   g_controller.update();
 
   g_telemetry.publish(g_controller.status(), now);

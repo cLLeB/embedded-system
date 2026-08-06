@@ -75,8 +75,16 @@ class BatteryWatcher(
             val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
             val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
             val batteryStatus = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
-            _charging.value = batteryStatus == BatteryManager.BATTERY_STATUS_CHARGING ||
+            val nowCharging = batteryStatus == BatteryManager.BATTERY_STATUS_CHARGING ||
                 batteryStatus == BatteryManager.BATTERY_STATUS_FULL
+
+            val chargingChanged = nowCharging != _charging.value
+            _charging.value = nowCharging
+
+            // Plugging in or unplugging is exactly when the socket's display is
+            // wrong and cannot know it, so tell it immediately rather than
+            // waiting for the next heartbeat.
+            if (chargingChanged) pushBattery()
 
             if (level >= 0 && scale > 0) {
                 _percent.value = level * 100 / scale
@@ -153,9 +161,17 @@ class BatteryWatcher(
      */
     private fun pushBattery() {
         if (!repo.isConnected) return
+
         val value = _percent.value
-        if (value !in 0..100) return
-        repo.sendLine("B$value")
+        if (value in 0..100) repo.sendLine("B$value")
+
+        repo.sendLine("T${_limit.value}")
+
+        // The one fact the socket cannot obtain for itself. Without it the LCD
+        // says "Ready - waiting for something to be plugged in" over an outlet
+        // that is charging a phone, because 20 mA is below what its sensor can
+        // resolve.
+        repo.sendLine(if (_charging.value) "L1" else "L0")
     }
 
     /**

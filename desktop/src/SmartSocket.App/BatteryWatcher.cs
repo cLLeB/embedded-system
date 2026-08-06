@@ -153,8 +153,18 @@ public sealed class BatteryWatcher : IDisposable
     private async Task PushBatteryAsync()
     {
         if (!_repo.IsConnected) return;
-        if (Percent < 0 || Percent > 100) return;
-        await _repo.SendLineAsync($"B{Percent}").ConfigureAwait(false);
+
+        if (Percent is >= 0 and <= 100)
+        {
+            await _repo.SendLineAsync($"B{Percent}").ConfigureAwait(false);
+        }
+
+        await _repo.SendLineAsync($"T{_settings.BatteryLimit}").ConfigureAwait(false);
+
+        // Whether a load the socket cannot measure is drawing. On a laptop the
+        // socket can see the current perfectly well, but it still cannot tell
+        // "charging" from "plugged in and full" as reliably as Windows can.
+        await _repo.SendLineAsync(OnAcPower ? "L1" : "L0").ConfigureAwait(false);
     }
 
     private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e) => Poll();

@@ -37,6 +37,20 @@ class UiPresenter {
   void setBatteryPercent(int16_t percent) { batteryPercent_ = percent; }
   int16_t batteryPercent() const { return batteryPercent_; }
 
+  /** The percentage the client will cut at, or -1. */
+  void setBatteryLimit(int16_t limit) { batteryLimit_ = limit; }
+
+  /**
+   * Whether the client can see itself charging.
+   *
+   * THE SOCKET CANNOT MEASURE THIS FOR A PHONE, so without being told it shows
+   * "Ready / waiting for something to be plugged in" over an outlet that is
+   * charging one. 20 mA on 230 V is below a single ADC count; the sensor is not
+   * wrong, it is simply blind at that size. The client is the only thing that
+   * knows, so when it says so, the display believes it.
+   */
+  void setClientCharging(bool charging) { clientCharging_ = charging; }
+
  private:
   void renderStatus(const SocketStatus& s, char* l0, char* l1) const;
   void renderDetail(const SocketStatus& s, char* l0, char* l1) const;
@@ -44,6 +58,8 @@ class UiPresenter {
 
   UiScreen screen_;
   int16_t batteryPercent_;
+  int16_t batteryLimit_;
+  bool clientCharging_;
 };
 
 }  // namespace smartsocket

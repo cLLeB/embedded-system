@@ -11,6 +11,8 @@ HalTelemetry::HalTelemetry(unsigned long baud)
       lastPublishMs_(0),
       pending_(Remote_None),
       batteryPercent_(-1),
+      batteryLimit_(-1),
+      clientCharging_(-1),
       rxLen_(0),
       overflowed_(false) {
   rx_[0] = '\0';
@@ -118,12 +120,32 @@ void HalTelemetry::handleLine(const char* line, uint8_t len) {
     return;
   }
 
-  // B<0..100> - the client's own battery level, for the display.
+  // L<0|1> - the client can see itself charging, or cannot.
+  //
+  // The socket cannot work this out for a phone: 20 mA on 230 V is below one ADC
+  // count, so its sensor reports a true zero and it concludes the outlet is
+  // empty. Someone standing at it should not be told "waiting for something to
+  // be plugged in" about a phone that is charging.
+  if (len == 2 && (line[0] == 'L' || line[0] == 'l')) {
+    if (line[1] == '1') {
+      clientCharging_ = 1;
+    } else if (line[1] == '0') {
+      clientCharging_ = 0;
+    }
+    return;
+  }
+
+  // B<0..100> - the client's own battery level.
+  // T<0..100> - the percentage it will cut at.
   //
   // Range-checked rather than clamped: a value outside 0-100 means the two ends
   // disagree about the format, and showing 100% because a corrupt line said 999
   // is exactly the sort of invented number the status parser refuses to produce.
-  if ((line[0] == 'B' || line[0] == 'b') && len >= 2 && len <= 4) {
+  const char tag = line[0];
+  const bool isBattery = (tag == 'B' || tag == 'b');
+  const bool isLimit = (tag == 'T' || tag == 't');
+
+  if ((isBattery || isLimit) && len >= 2 && len <= 4) {
     int16_t value = 0;
     for (uint8_t i = 1; i < len; i++) {
       if (line[i] < '0' || line[i] > '9') {
@@ -132,7 +154,11 @@ void HalTelemetry::handleLine(const char* line, uint8_t len) {
       value = static_cast<int16_t>(value * 10 + (line[i] - '0'));
     }
     if (value >= 0 && value <= 100) {
-      batteryPercent_ = value;
+      if (isBattery) {
+        batteryPercent_ = value;
+      } else {
+        batteryLimit_ = value;
+      }
     }
   }
 }
@@ -140,6 +166,18 @@ void HalTelemetry::handleLine(const char* line, uint8_t len) {
 int16_t HalTelemetry::takeBatteryPercent() {
   const int16_t value = batteryPercent_;
   batteryPercent_ = -1;
+  return value;
+}
+
+int16_t HalTelemetry::takeBatteryLimit() {
+  const int16_t value = batteryLimit_;
+  batteryLimit_ = -1;
+  return value;
+}
+
+int8_t HalTelemetry::takeClientCharging() {
+  const int8_t value = clientCharging_;
+  clientCharging_ = -1;
   return value;
 }
 

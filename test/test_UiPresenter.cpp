@@ -80,6 +80,67 @@ TEST(without_a_client_the_current_keeps_the_top_line) {
   CHECK_STR_EQ(l1, "02:15:33        ");
 }
 
+/**
+ * The socket reads a true zero with a phone charging on it - 20 mA on 230 V is
+ * below a single ADC count - so it says "Ready, waiting for something to be
+ * plugged in" over an outlet that is in use. The client is the only thing that
+ * knows otherwise.
+ */
+TEST(a_client_that_says_it_is_charging_overrides_ready) {
+  UiPresenter ui;
+  char l0[LineBufferSize];
+  char l1[LineBufferSize];
+
+  ui.setBatteryPercent(72);
+  ui.setClientCharging(true);
+  ui.render(makeStatus(State_Idle), l0, l1);
+
+  CHECK_STR_EQ(l0, "Charging     72%");
+}
+
+TEST(a_client_never_overrides_a_cutoff_or_a_fault) {
+  UiPresenter ui;
+  char l0[LineBufferSize];
+  char l1[LineBufferSize];
+
+  ui.setBatteryPercent(72);
+  ui.setClientCharging(true);
+
+  // A client claiming to be charging must never be able to paint over the
+  // states that exist to tell someone the socket needs attention.
+  ui.render(makeStatus(State_Cutoff), l0, l1);
+  CHECK(strncmp(l0, "Charging", 8) != 0);
+
+  ui.render(makeStatus(State_Fault), l0, l1);
+  CHECK(strncmp(l0, "Charging", 8) != 0);
+
+  ui.render(makeStatus(State_RelayStuck), l0, l1);
+  CHECK(strncmp(l0, "Charging", 8) != 0);
+}
+
+/**
+ * With no session running, elapsed is zero and 00:00:00 says nothing. Where the
+ * charge stops is what the person actually wants to know.
+ */
+TEST(with_no_session_the_second_line_says_where_it_stops) {
+  UiPresenter ui;
+  char l0[LineBufferSize];
+  char l1[LineBufferSize];
+
+  ui.setBatteryPercent(72);
+  ui.setBatteryLimit(80);
+  ui.setClientCharging(true);
+
+  // SocketController::status() zeroes elapsed outside Charging, so this is what
+  // an Idle status really looks like - the shared helper does not model that.
+  SocketStatus idle = makeStatus(State_Idle);
+  idle.sessionElapsedMs = 0;
+
+  ui.render(idle, l0, l1);
+
+  CHECK_STR_EQ(l1, "Cuts at 80%     ");
+}
+
 TEST(a_full_battery_still_fits_the_line) {
   UiPresenter ui;
   char l0[LineBufferSize];

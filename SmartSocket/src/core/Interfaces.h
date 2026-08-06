@@ -122,6 +122,21 @@ class ITelemetry {
   // Not pure: a link that cannot report one is still a valid link, and the
   // fakes in the test rig should not have to care.
   virtual int16_t takeBatteryPercent() { return -1; }
+
+  // The percentage the client will cut at, 0-100, or -1 for none. Display only.
+  virtual int16_t takeBatteryLimit() { return -1; }
+
+  // Whether the client can see itself taking a charge.
+  //
+  // THE SOCKET CANNOT DETERMINE THIS FOR A PHONE. Charging on 230 V draws about
+  // 20 mA, below a single ADC count on the ACS712-5A and below NoiseFloorMa, so
+  // the sensor returns a true zero and the state machine concludes the outlet is
+  // empty - correctly, from what it can measure. The client is the only thing
+  // that knows otherwise, and someone standing at the socket should not be told
+  // "waiting for something to be plugged in" about a phone that is charging.
+  //
+  // Display only, like the rest of this: 1 charging, 0 not, -1 nothing new.
+  virtual int8_t takeClientCharging() { return -1; }
 };
 
 // Persistence for the learned device profile.
