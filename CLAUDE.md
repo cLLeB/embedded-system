@@ -11,7 +11,7 @@ socket detected the taper, cut power and latched.
 ## Commands
 
 ```powershell
-# 123 core tests, native, no hardware needed. Finds MSVC via vswhere.
+# 129 core tests, native, no hardware needed. Finds MSVC via vswhere.
 powershell -ExecutionPolicy Bypass -File test\run_tests.ps1
 
 # Compile-verify for the Uno without opening the IDE.
@@ -21,10 +21,32 @@ powershell -ExecutionPolicy Bypass -File test\run_tests.ps1
 # Regenerate the enclosure STLs (slim set).
 $env:SMART_SOCKET_SLIM=1
 & "C:\Program Files\FreeCAD 1.1\bin\freecadcmd.exe" enclosure\smart_socket_enclosure.py
+
+# Android: 27 unit tests, then the installable APK.
+cd android; .\gradlew.bat test assembleRelease
+
+# Windows desktop: 30 core tests, then the self-contained exe.
+cd desktop
+& "C:\Program Files\dotnet\dotnet.exe" test tests\SmartSocket.Core.Tests\SmartSocket.Core.Tests.csproj
+& "C:\Program Files\dotnet\dotnet.exe" publish src\SmartSocket.App\SmartSocket.App.csproj -c Release -o dist
 ```
 
-Current budget: **41% flash, 40% RAM**. There is no `arduino-cli` on PATH; the
-Arduino IDE bundles the one above.
+Current budget: **42% flash, 47% RAM** as shipped, **47% / 50%** with every
+peripheral enabled. There is no `arduino-cli` on PATH; the Arduino IDE bundles
+the one above.
+
+## Fitted peripherals
+
+The top of `SmartSocket.ino` has `HAS_BUTTONS`, `HAS_BUZZER` and
+`HAS_BLUETOOTH`, all **0** — the buttons, buzzer and HC-05 are not wired yet.
+Set each to 1 as the part goes in. Sensor + relay + LCD is the whole
+safety-critical path; the rest is how a person hears about it and answers back.
+
+With them at 0 the socket still cuts power on its own and still probes its way
+back. The LCD cycles its three screens on a timer instead of on the NEXT button,
+and the USB Serial Monitor (9600, line ending **Newline**) is the control panel:
+`C` cut, `R` re-arm, `P` probe now, `?` status. Those are the same four commands
+the phone sends, through the same `onRemote()` path as the buttons.
 
 ---
 
@@ -62,6 +84,26 @@ No threshold separates a signal that size from the noise. This is the specified
 sensor's resolution, not an algorithm fault. See `docs/MOBILE_APP.md` §2 for how
 the Android app is meant to solve it.
 
+**The Bluetooth module is not an HC-05.** It is sold as one, on a ZS-040 board
+with the button, but it is an **HM-10 class BLE part** (CC2541, service `FFE0`,
+characteristic `FFE1`). Windows reported a GATT service on it, Classic pairing
+never produced a serial port, and the desktop app identified the profile on
+connection. So both apps carry a **BLE/GATT transport** as well as the Classic
+one and pick per device — `BleSerialProfiles` in each app resolves which
+characteristic carries the bytes, from a table plus a notify+write fallback.
+
+**Each client cuts using the battery only it can see.** The sensor handles the
+general case; the two apps handle their own host device:
+
+| Device | What cuts the power |
+|---|---|
+| Laptop | The socket's current taper, **or** the Windows app at an exact percentage |
+| The phone running the Android app | That app, at its battery limit |
+| Any other device | The socket's current sensing alone — and it cannot see a phone |
+
+Both cutoffs can be live at once without conflict: whichever fires first sends
+`C`, and the firmware ignores a command for a state it is already in.
+
 ---
 
 ## Things that have already gone wrong here
@@ -98,7 +140,11 @@ Each of these cost hours. The fixes are in the code with comments explaining why
 |---|---|
 | `README.md` | Overview, wiring, known limits |
 | `docs/FINAL_BUILD.md` | **The current build guide**, step by step |
-| `docs/MOBILE_APP.md` | Android app spec — not built yet |
+| `docs/ENCLOSURE_ASSEMBLY.md` | Fitting the build into the printed box. Supersedes `FINAL_BUILD.md` PART 10 |
+| `docs/HANDOFF.md` | **Start here.** What is done, what is not, and the order to finish it |
+| `android/README.md` | The Android app: how to build it, and why it is shaped that way |
+| `desktop/README.md` | The Windows app: build, publish, and why the laptop cutoff differs from the phone's |
+| `docs/MOBILE_APP.md` | The app's original spec. Kept for the reasoning; **it is built** |
 | `enclosure/build_slim.log` | Authoritative list of what to print |
 | `BUILD_GUIDE.md`, `docs/STAGE2.md` | **Superseded.** The old low-voltage bench rig |
 | `enclosure/README.md` | **Stale**, banner at the top says so |

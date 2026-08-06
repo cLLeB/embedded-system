@@ -753,8 +753,12 @@ beside the box without pulling anything loose:
 | Button 1, a leg on the **opposite** face | `−` rail |
 | Button 2, a leg on one face | Uno digital **3** |
 | Button 2, a leg on the **opposite** face | `−` rail |
-| Buzzer, either leg | column 12, lower block |
+| Buzzer, either leg | column 8, lower block |
 | Buzzer, other leg | `−` rail |
+
+**Column 8, not column 12.** Column 12 is where `D8` arrives and the 110 Ω
+resistor spans 12 to 8. Wiring the buzzer to 12 shorts the resistor out and
+drives the element straight off the pin.
 
 **The channel rule from STEP 7 no longer applies** — it only existed because the
 button's legs bridged the breadboard's centre channel. What survives is the

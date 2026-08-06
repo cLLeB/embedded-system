@@ -104,13 +104,19 @@ and no reason to spend it on text.
 
 ### App → socket
 
-| Command | Meaning |
-|---|---|
-| `C\n` | Cut power now |
-| `R\n` | Re-arm |
-| `P\n` | Probe now |
-| `T<seconds>\n` | Set taper confirm time |
-| `?\n` | Send one status line immediately |
+| Command | Meaning | |
+|---|---|---|
+| `C\n` | Cut power now | built |
+| `R\n` | Re-arm | built |
+| `P\n` | Probe now | built |
+| `?\n` | Send one status line immediately | built |
+| `T<seconds>\n` | Set taper confirm time | **not built** |
+
+`HalTelemetry::pump` accepts **single letters only**; anything longer is dropped.
+`T<seconds>` was designed here and deliberately not implemented — live-editable
+cutoff thresholds on a device switching 230 V is a bigger decision than it looks,
+and the socket learns its own profile anyway. Adding it means teaching `pump` to
+parse an argument, and making the threshold mutable in `Config.h`.
 
 Unknown commands must be ignored, not faulted. A phone that reconnects mid-line
 will send garbage.
