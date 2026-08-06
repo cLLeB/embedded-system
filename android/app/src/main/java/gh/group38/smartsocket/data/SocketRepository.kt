@@ -163,6 +163,11 @@ class SocketRepository(private val context: Context) {
     }
 
     fun connect(device: SocketDevice) {
+        // One radio. A sweep left running across a connection attempt starves
+        // it, so anything that connects stops looking first - whether the
+        // request came from the picker, from launch, or from a reboot.
+        ble.stopScan()
+
         reconnecting?.cancel()
         reconnecting = null
         collectors?.cancel()

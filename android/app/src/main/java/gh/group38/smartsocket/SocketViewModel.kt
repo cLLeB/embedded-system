@@ -154,6 +154,18 @@ class SocketViewModel(app: Application) : AndroidViewModel(app) {
         if (!_permissionGranted.value) return
         if (_scanning.value) return
 
+        // Never alongside a live link, and never across an attempt to make one.
+        // The app reconnects to the remembered socket on launch, so a sweep
+        // kicked off by the picker appearing could land right on top of it and
+        // starve it.
+        val link = repo.linkState.value
+        if (link is LinkState.Connected ||
+            link is LinkState.Connecting ||
+            link is LinkState.Reconnecting
+        ) {
+            return
+        }
+
         _scanning.value = true
         repo.startScan()
 
@@ -177,6 +189,12 @@ class SocketViewModel(app: Application) : AndroidViewModel(app) {
     fun bluetoothOn(): Boolean = repo.bluetoothOn()
 
     fun connect(device: SocketDevice) {
+        // STOP SCANNING FIRST. One radio, and a sweep in progress starves the
+        // connection attempt - on Android a scan running across a connectGatt is
+        // a reliable way to make it hang or time out. This was the regression
+        // that made the picker list the socket and then never open it.
+        stopScan()
+
         _screen.value = Screen.CONNECTING
         repo.connect(device)
     }

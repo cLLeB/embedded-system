@@ -55,6 +55,12 @@ class BleTransport(
 
         /** Longer, because a stack-managed reconnect is meant to wait. */
         const val AutoConnectTimeoutMs = 45_000L
+
+        /** Attempts before the user is told anything went wrong. */
+        const val ConnectAttempts = 3
+
+        /** Breathing room between them. Reconnecting instantly earns a 133. */
+        const val RetrySettleMs = 900L
         const val DiscoverTimeoutMs = 10_000L
         const val HandshakeTimeoutMs = 10_000L
 
@@ -93,6 +99,17 @@ class BleTransport(
     @Volatile private var connected = false
     @Volatile private var servicesFound = false
     @Volatile private var closing = false
+
+    /**
+     * Set when the stack reports the connection gone. Lets a failed attempt bail
+     * immediately instead of sitting out the full timeout - a 133 is reported in
+     * milliseconds, and waiting fifteen seconds to react to it turned a retry
+     * that would have worked into a minute of staring at a spinner.
+     */
+    @Volatile private var connectFailed = false
+
+    /** True while retrying, so only the last attempt reports a failure. */
+    @Volatile private var suppressFailures = false
 
     /** Which profile matched, once a link is up. Names the module in the UI. */
     @Volatile var profileName: String? = null
@@ -208,7 +225,39 @@ class BleTransport(
     override suspend fun connect(device: SocketDevice): Boolean =
         connect(device, autoConnect = false)
 
+    /**
+     * Tries several times before admitting defeat.
+     *
+     * ANDROID'S GATT STACK FAILS SPURIOUSLY AND OFTEN. Status 133 is the usual
+     * shape of it - an undocumented catch-all the stack returns when a
+     * connection comes too soon after a disconnect, while a scan is running, or
+     * for no discernible reason at all. A second attempt a moment later
+     * routinely succeeds where the first did not.
+     *
+     * Reporting the first failure to the user was making the app look broken
+     * over something that fixes itself. Only the last attempt is allowed to
+     * complain.
+     */
     private suspend fun connect(device: SocketDevice, autoConnect: Boolean): Boolean {
+        repeat(ConnectAttempts) { attempt ->
+            val last = attempt == ConnectAttempts - 1
+            suppressFailures = !last
+
+            if (attemptConnect(device, autoConnect)) {
+                suppressFailures = false
+                return true
+            }
+
+            // Let the stack settle. Reconnecting immediately after a close is
+            // one of the reliable ways to earn a 133.
+            if (!last) kotlinx.coroutines.delay(RetrySettleMs)
+        }
+
+        suppressFailures = false
+        return false
+    }
+
+    private suspend fun attemptConnect(device: SocketDevice, autoConnect: Boolean): Boolean {
         disconnect()
         closing = false
         _linkState.value = LinkState.Connecting
@@ -217,6 +266,7 @@ class BleTransport(
         sawStatus = false
         connected = false
         servicesFound = false
+        connectFailed = false
         synchronized(line) { line.setLength(0) }
 
         val adapter = adapter() ?: run {
@@ -238,10 +288,19 @@ class BleTransport(
         // True when rebuilding a link that dropped on its own, where waiting is
         // exactly what is wanted and the stack does it better than this process
         // can - see reconnect().
-        gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            remote.connectGatt(context, autoConnect, callback, BluetoothDevice.TRANSPORT_LE)
-        } else {
-            remote.connectGatt(context, autoConnect, callback)
+        gatt = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                remote.connectGatt(context, autoConnect, callback, BluetoothDevice.TRANSPORT_LE)
+            } else {
+                remote.connectGatt(context, autoConnect, callback)
+            }
+        } catch (_: SecurityException) {
+            // The permission was revoked, or this ran before it was granted -
+            // the app reconnects on launch, which can beat the user to the
+            // prompt. Reported rather than thrown: an unhandled exception in
+            // that coroutine would take the process down.
+            fail("Bluetooth permission is needed to open ${device.name}.")
+            return false
         }
 
         if (gatt == null) {
@@ -254,13 +313,17 @@ class BleTransport(
         // waiting would tolerate.
         val connectWindow = if (autoConnect) AutoConnectTimeoutMs else ConnectTimeoutMs
 
-        if (!awaitFlag(connectWindow) { connected }) {
+        // Bails the moment the stack says it failed, rather than sitting out the
+        // whole window for an answer that is never coming.
+        awaitFlag(connectWindow) { connected || connectFailed }
+
+        if (!connected) {
             disconnect()
             fail("${device.name} did not answer. Check the socket is powered and in range.")
             return false
         }
 
-        if (!awaitFlag(DiscoverTimeoutMs) { servicesFound }) {
+        if (!awaitFlag(DiscoverTimeoutMs) { servicesFound || connectFailed } || !servicesFound) {
             disconnect()
             fail("${device.name} connected but would not list its services.")
             return false
@@ -464,6 +527,7 @@ class BleTransport(
         } ?: false
 
     private fun fail(reason: String) {
+        if (suppressFailures) return
         _linkState.value = LinkState.Failed(reason)
     }
 
@@ -514,8 +578,14 @@ class BleTransport(
 
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     connected = false
+
+                    // Unblocks a waiting attempt immediately. Status 133 arrives
+                    // in milliseconds; without this the attempt sat out its full
+                    // timeout waiting for an answer already known not to come.
+                    connectFailed = true
+
                     if (!closing) {
-                        _linkState.value = LinkState.Failed("The link to the socket dropped.")
+                        fail("The link to the socket dropped.")
                     }
                 }
             }
