@@ -14,17 +14,27 @@ package gh.group38.smartsocket.data
  * the rest from costing anything - a retry a minute is nothing next to holding
  * the Bluetooth link open in the first place.
  *
- * It gives up rather than retrying forever. A foreground notification the user
- * cannot dismiss, sitting over a socket that is switched off at the wall, is
- * worse than an honest "lost it".
+ * THE SCHEDULE ENDS; THE TRYING DOES NOT. This returns null past [MAX_ATTEMPTS]
+ * because the escalation is finished, not because the socket should be
+ * abandoned. [SocketRepository] then keeps retrying at [CEILING_MS] for as long
+ * as the user has a socket selected.
+ *
+ * That is a deliberate change. Giving up after eight minutes was defensible when
+ * the alternative was a notification sitting over a socket switched off at the
+ * wall - but a phone left charging overnight goes out of range, has its screen
+ * turned off, and gets its radio quietened by Doze, and every one of those is
+ * temporary. Stopping meant the cutoff silently never happened. Only a
+ * deliberate disconnect ends it now.
  */
 object ReconnectPolicy {
 
-    /** Roughly eight minutes of trying, in total. */
+    /** Where the escalating part of the schedule stops. */
     const val MAX_ATTEMPTS = 12
 
+    /** What the interval settles at, and stays at, indefinitely. */
+    const val CEILING_MS = 60_000L
+
     private const val FIRST_DELAY_MS = 2_000L
-    private const val CEILING_MS = 60_000L
 
     /**
      * Wait before attempt [attempt], counted from zero, or null once the

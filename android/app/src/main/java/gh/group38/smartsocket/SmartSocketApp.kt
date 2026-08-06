@@ -33,6 +33,20 @@ class SmartSocketApp : Application() {
         // from SocketViewModel it was left running whenever a link failed for
         // good after the activity was gone: a notification with nothing behind
         // it.
+        // Pick the link back up where it was left, without being asked.
+        //
+        // The socket to reconnect to is only remembered until the user presses
+        // Disconnect, so this cannot reattach to one somebody deliberately
+        // walked away from. Anything else - the app being swiped away, the phone
+        // rebooting, Android killing the process overnight - is not a decision,
+        // and the charge was supposed to still be watched.
+        scope.launch {
+            val device = repository.lastDevice()
+            if (device != null && repository.bluetoothOn() && !repository.isConnected) {
+                repository.connect(device)
+            }
+        }
+
         scope.launch {
             repository.linkState.collect { state ->
                 when (state) {

@@ -52,6 +52,9 @@ class BleTransport(
         val CccdUuid: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
         const val ConnectTimeoutMs = 15_000L
+
+        /** Longer, because a stack-managed reconnect is meant to wait. */
+        const val AutoConnectTimeoutMs = 45_000L
         const val DiscoverTimeoutMs = 10_000L
         const val HandshakeTimeoutMs = 10_000L
 
@@ -190,7 +193,22 @@ class BleTransport(
         }
     }
 
-    override suspend fun connect(device: SocketDevice): Boolean {
+    /**
+     * Rebuilds a dropped link, handing the waiting to the Bluetooth stack.
+     *
+     * autoConnect true is the difference between a link that survives a screen
+     * being switched off and one that does not. With it, Android itself watches
+     * for the device and reconnects whenever it comes back - at a lower duty
+     * cycle, outside this process, and unaffected by Doze quietening the app.
+     * It is slow to make the first connection, which is why the user-initiated
+     * path does not use it.
+     */
+    suspend fun reconnect(device: SocketDevice): Boolean = connect(device, autoConnect = true)
+
+    override suspend fun connect(device: SocketDevice): Boolean =
+        connect(device, autoConnect = false)
+
+    private suspend fun connect(device: SocketDevice, autoConnect: Boolean): Boolean {
         disconnect()
         closing = false
         _linkState.value = LinkState.Connecting
@@ -213,13 +231,17 @@ class BleTransport(
             return false
         }
 
-        // autoConnect false: a direct connection attempt reports failure quickly,
-        // where autoConnect would sit waiting indefinitely for a device that is
-        // switched off - and the user is watching a spinner.
+        // False for a connection the user just asked for: a direct attempt fails
+        // fast, where autoConnect would sit waiting indefinitely on a socket
+        // that is switched off while somebody watches a spinner.
+        //
+        // True when rebuilding a link that dropped on its own, where waiting is
+        // exactly what is wanted and the stack does it better than this process
+        // can - see reconnect().
         gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            remote.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
+            remote.connectGatt(context, autoConnect, callback, BluetoothDevice.TRANSPORT_LE)
         } else {
-            remote.connectGatt(context, false, callback)
+            remote.connectGatt(context, autoConnect, callback)
         }
 
         if (gatt == null) {
@@ -227,7 +249,12 @@ class BleTransport(
             return false
         }
 
-        if (!awaitFlag(ConnectTimeoutMs) { connected }) {
+        // A stack-managed reconnect is meant to take its time - that is the
+        // point of it - so it gets a longer window than a user standing there
+        // waiting would tolerate.
+        val connectWindow = if (autoConnect) AutoConnectTimeoutMs else ConnectTimeoutMs
+
+        if (!awaitFlag(connectWindow) { connected }) {
             disconnect()
             fail("${device.name} did not answer. Check the socket is powered and in range.")
             return false

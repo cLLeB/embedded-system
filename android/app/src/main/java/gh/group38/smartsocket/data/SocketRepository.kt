@@ -151,7 +151,15 @@ class SocketRepository(private val context: Context) {
     fun lastDevice(): SocketDevice? {
         val name = prefs.getString(KEY_LAST_NAME, null) ?: return null
         val address = prefs.getString(KEY_LAST_ADDRESS, null) ?: return null
-        return SocketDevice(name = name, address = address)
+
+        // The radio has to be remembered with it. Without this the stored device
+        // defaulted to Classic, so reconnecting to a BLE module on launch or
+        // after a reboot opened an RFCOMM socket that could never answer.
+        val kind = runCatching {
+            LinkKind.valueOf(prefs.getString(KEY_LAST_KIND, null) ?: LinkKind.CLASSIC.name)
+        }.getOrDefault(LinkKind.CLASSIC)
+
+        return SocketDevice(name = name, address = address, kind = kind)
     }
 
     fun connect(device: SocketDevice) {
@@ -173,6 +181,7 @@ class SocketRepository(private val context: Context) {
             prefs.edit()
                 .putString(KEY_LAST_NAME, device.name)
                 .putString(KEY_LAST_ADDRESS, device.address)
+                .putString(KEY_LAST_KIND, device.kind.name)
                 .apply()
         }
 
@@ -216,6 +225,7 @@ class SocketRepository(private val context: Context) {
         prefs.edit()
             .remove(KEY_LAST_NAME)
             .remove(KEY_LAST_ADDRESS)
+            .remove(KEY_LAST_KIND)
             .apply()
     }
 
@@ -255,22 +265,38 @@ class SocketRepository(private val context: Context) {
     private fun startReconnecting(device: SocketDevice) {
         reconnecting = scope.launch {
             var attempt = 0
+            var toldTheUser = false
+
+            // FOREVER, until the user disconnects. Every reason a phone loses
+            // this link is temporary - screen off, out of range, Doze quietening
+            // the radio - and giving up after eight minutes meant the cutoff the
+            // user was promised silently never happened.
             while (true) {
-                val wait = ReconnectPolicy.delayMsFor(attempt) ?: break
+                val wait = ReconnectPolicy.delayMsFor(attempt) ?: ReconnectPolicy.CEILING_MS
+
                 _linkState.value = LinkState.Reconnecting(device, attempt + 1)
                 delay(wait)
-                if (bluetooth.connect(device)) return@launch
+
+                val reconnected = when (device.kind) {
+                    // autoConnect, which hands the retry to the Bluetooth stack
+                    // itself. It survives the screen going off far better than
+                    // anything this process can do, because it is not this
+                    // process doing it.
+                    LinkKind.BLE -> ble.reconnect(device)
+                    else -> bluetooth.connect(device)
+                }
+
+                if (reconnected) return@launch
+
+                // Said once, when the escalating schedule runs out - not on
+                // every retry for the rest of the night.
+                if (!toldTheUser && attempt >= ReconnectPolicy.MAX_ATTEMPTS) {
+                    toldTheUser = true
+                    Notifications.alertLinkLost(context, device.name)
+                }
+
                 attempt++
             }
-
-            reconnecting = null
-            _linkState.value = LinkState.Failed(
-                "Lost the link to ${device.name} and could not get it back."
-            )
-            // The user is not looking at the screen - that is the whole premise
-            // of reconnecting at all - so silence here means they find out when
-            // the charge they were told would be watched was not.
-            Notifications.alertLinkLost(context, device.name)
         }
     }
 
@@ -322,5 +348,6 @@ class SocketRepository(private val context: Context) {
     private companion object {
         const val KEY_LAST_NAME = "last_device_name"
         const val KEY_LAST_ADDRESS = "last_device_address"
+        const val KEY_LAST_KIND = "last_device_kind"
     }
 }

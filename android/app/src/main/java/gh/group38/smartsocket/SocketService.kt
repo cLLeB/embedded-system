@@ -63,9 +63,16 @@ class SocketService : Service() {
                 }
         }
 
-        // The link is not ours to rebuild, so being restarted without an intent
-        // would leave this service showing a notification for nothing.
-        return START_NOT_STICKY
+        // STICKY, so Android brings this back if it kills the process under
+        // memory pressure overnight.
+        //
+        // It was NOT_STICKY on the reasoning that a restart with no intent would
+        // leave a notification over a link nobody was rebuilding. That is no
+        // longer true: SmartSocketApp reconnects to the remembered socket the
+        // moment the process starts, and the socket is only remembered until the
+        // user presses Disconnect. So a restart now genuinely does resume the
+        // job rather than showing a notification for nothing.
+        return START_STICKY
     }
 
     override fun onDestroy() {
