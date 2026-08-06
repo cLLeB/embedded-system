@@ -54,7 +54,7 @@ void appendStr(char* dst, uint8_t& pos, uint8_t size, const char* src) {
 
 }  // namespace
 
-UiPresenter::UiPresenter() : screen_(Screen_Status) {}
+UiPresenter::UiPresenter() : screen_(Screen_Status), batteryPercent_(-1) {}
 
 void UiPresenter::nextScreen() {
   screen_ = static_cast<UiScreen>((screen_ + 1) % Screen_Count);
@@ -65,21 +65,44 @@ void UiPresenter::renderStatus(const SocketStatus& s, char* l0, char* l1) const 
   char right[12];
   uint8_t pos = 0;
 
-  format::amps(s.currentMa, amps, sizeof(amps));
+  // The top-right corner is the most valuable space on the display, so it
+  // carries the best answer available to "how full is it". A real battery
+  // percentage from the client beats the current every time - the current was
+  // only ever a proxy for it, and a poor one at 26 mA of resolution.
   right[0] = '\0';
-  appendStr(right, pos, sizeof(right), amps);
-  appendStr(right, pos, sizeof(right), "A");
+
+  if (batteryPercent_ >= 0) {
+    char pct[8];
+    format::number(static_cast<uint16_t>(batteryPercent_), pct, sizeof(pct));
+    appendStr(right, pos, sizeof(right), pct);
+    appendStr(right, pos, sizeof(right), "%");
+  } else {
+    format::amps(s.currentMa, amps, sizeof(amps));
+    appendStr(right, pos, sizeof(right), amps);
+    appendStr(right, pos, sizeof(right), "A");
+  }
+
   composeLR(format::stateName(s.state), right, l0);
 
   char elapsed[10];
   format::duration(s.sessionElapsedMs, elapsed, sizeof(elapsed));
 
-  char peak[10];
-  format::amps(s.peakMa, peak, sizeof(peak));
+  // How long this charge has been running, and - only once the percentage has
+  // taken the top line - the live current underneath it.
+  //
+  // The session peak used to sit here when there was no client. It is gone on
+  // purpose: peak current is a number for diagnosing the algorithm, not for
+  // someone glancing at a socket to see how their laptop is doing. Better an
+  // empty half-line than a figure that means nothing to whoever is reading it.
   pos = 0;
   right[0] = '\0';
-  appendStr(right, pos, sizeof(right), "pk");
-  appendStr(right, pos, sizeof(right), peak);
+
+  if (batteryPercent_ >= 0) {
+    format::amps(s.currentMa, amps, sizeof(amps));
+    appendStr(right, pos, sizeof(right), amps);
+    appendStr(right, pos, sizeof(right), "A");
+  }
+
   composeLR(elapsed, right, l1);
 }
 

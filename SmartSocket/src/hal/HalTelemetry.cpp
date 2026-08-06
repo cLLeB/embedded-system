@@ -10,6 +10,7 @@ HalTelemetry::HalTelemetry(unsigned long baud)
     : baud_(baud),
       lastPublishMs_(0),
       pending_(Remote_None),
+      batteryPercent_(-1),
       rxLen_(0),
       overflowed_(false) {
   rx_[0] = '\0';
@@ -76,30 +77,70 @@ void HalTelemetry::pump() {
       continue;
     }
 
-    // Single letters only. A phone that reconnects mid-line sends garbage, so
-    // anything unrecognised is dropped rather than faulted.
-    if (len == 1) {
-      switch (rx_[0]) {
-        case 'C':
-        case 'c':
-          pending_ = Remote_Cut;
-          break;
-        case 'R':
-        case 'r':
-          pending_ = Remote_Rearm;
-          break;
-        case 'P':
-        case 'p':
-          pending_ = Remote_Probe;
-          break;
-        case '?':
-          pending_ = Remote_StatusNow;
-          break;
-        default:
-          break;
+    handleLine(rx_, len);
+  }
+}
+
+void HalTelemetry::handleLine(const char* line, uint8_t len) {
+  // Single letters are the original four, and stay exactly as they were.
+  // A client that reconnects mid-line sends garbage, so anything unrecognised
+  // is still dropped rather than faulted.
+  if (len == 1) {
+    switch (line[0]) {
+      case 'C':
+      case 'c':
+        pending_ = Remote_Cut;
+        break;
+      case 'R':
+      case 'r':
+        pending_ = Remote_Rearm;
+        break;
+      case 'P':
+      case 'p':
+        pending_ = Remote_Probe;
+        break;
+      case '?':
+        pending_ = Remote_StatusNow;
+        break;
+      default:
+        break;
+    }
+    return;
+  }
+
+  // A<0|1> - hand the full-charge decision to the client, or take it back.
+  if (len == 2 && (line[0] == 'A' || line[0] == 'a')) {
+    if (line[1] == '1') {
+      pending_ = Remote_AppManagedOn;
+    } else if (line[1] == '0') {
+      pending_ = Remote_AppManagedOff;
+    }
+    return;
+  }
+
+  // B<0..100> - the client's own battery level, for the display.
+  //
+  // Range-checked rather than clamped: a value outside 0-100 means the two ends
+  // disagree about the format, and showing 100% because a corrupt line said 999
+  // is exactly the sort of invented number the status parser refuses to produce.
+  if ((line[0] == 'B' || line[0] == 'b') && len >= 2 && len <= 4) {
+    int16_t value = 0;
+    for (uint8_t i = 1; i < len; i++) {
+      if (line[i] < '0' || line[i] > '9') {
+        return;
       }
+      value = static_cast<int16_t>(value * 10 + (line[i] - '0'));
+    }
+    if (value >= 0 && value <= 100) {
+      batteryPercent_ = value;
     }
   }
+}
+
+int16_t HalTelemetry::takeBatteryPercent() {
+  const int16_t value = batteryPercent_;
+  batteryPercent_ = -1;
+  return value;
 }
 
 RemoteCommand HalTelemetry::takeCommand() {

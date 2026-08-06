@@ -29,12 +29,21 @@ class UiPresenter {
   // never has to clear the display to erase stale characters.
   void render(const SocketStatus& status, char* line0, char* line1) const;
 
+  // The client's own battery level, or -1 for "no client attached".
+  //
+  // Kept here rather than in SocketStatus on purpose: the state machine must
+  // behave identically with and without a client, so a number only a client can
+  // know has no business inside it. This is display, and display only.
+  void setBatteryPercent(int16_t percent) { batteryPercent_ = percent; }
+  int16_t batteryPercent() const { return batteryPercent_; }
+
  private:
   void renderStatus(const SocketStatus& s, char* l0, char* l1) const;
   void renderDetail(const SocketStatus& s, char* l0, char* l1) const;
   void renderStats(const SocketStatus& s, char* l0, char* l1) const;
 
   UiScreen screen_;
+  int16_t batteryPercent_;
 };
 
 }  // namespace smartsocket

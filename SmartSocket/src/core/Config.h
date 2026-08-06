@@ -322,6 +322,37 @@ const uint32_t ButtonLongPressMs = 1500;
 
 const uint32_t LcdRefreshMs = 500;
 
+// How long each screen holds when the socket cycles them by itself.
+//
+// Only used when no NEXT button is fitted: without it Screen_Status would be the
+// only page ever visible, and the detail and stats pages - the ones that show the
+// peak, the threshold and the lifetime cutoffs - would be unreachable on a build
+// that is otherwise complete.
+//
+// RAISED FROM 4 s. At four seconds the display never sat still long enough to
+// be read - you looked up, found the page you wanted had already gone, and
+// waited for it to come round. Ten seconds is long enough to read two lines
+// without hurrying, and a full turn still takes half a minute.
+//
+// The status page is the one worth looking at, and it now carries the battery
+// percentage whenever a client is reporting one, so the pages that exist mainly
+// for diagnostics no longer interrupt the one that matters as often.
+const uint32_t UiAutoCycleMs = 10000;
+
+// How long a client's claim to be managing the charge survives its silence.
+//
+// THIS IS WHAT STOPS A SOCKET BEING STUCK OFF. While a client is in charge the
+// socket suppresses both its own taper cutoff and its recovery probe, so if the
+// client simply vanishes - laptop carried out of range, app closed, Bluetooth
+// dropped - nothing is left to turn power back on, and the socket would sit
+// with the relay open indefinitely.
+//
+// So the claim expires unless it is renewed. The client re-sends A1 on a timer
+// far shorter than this; three minutes is long enough to ride out a reconnect
+// without flapping, and short enough that a genuinely absent client hands
+// control back before anyone notices.
+const uint32_t AppManagedTimeoutMs = 180000;  // 3 min
+
 // ---------------------------------------------------------------------------
 // Telemetry
 // ---------------------------------------------------------------------------

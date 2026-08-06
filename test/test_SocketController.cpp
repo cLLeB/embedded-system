@@ -763,6 +763,167 @@ TEST(a_remote_probe_is_ignored_unless_the_socket_is_cut) {
   CHECK_EQ(rig.controller.state(), State_Charging);
 }
 
+// --- app-managed mode --------------------------------------------------------
+
+namespace {
+
+// Runs time forward the way a connected client actually does: renewing the
+// claim as it goes. A charge session lasts hours and the claim lapses after
+// three minutes, so anything simulating a live client has to keep talking -
+// which is exactly what the app does, on a timer far shorter than the timeout.
+void runManaged(Rig& rig, Milliamps ma, Millis totalMs) {
+  const Millis step = config::AppManagedTimeoutMs / 3;
+  Millis done = 0;
+
+  while (done < totalMs) {
+    const Millis remaining = totalMs - done;
+    const Millis chunk = remaining < step ? remaining : step;
+    rig.run(ma, chunk);
+    rig.controller.onRemote(Remote_AppManagedOn);
+    done += chunk;
+  }
+}
+
+}  // namespace
+//
+// The ACS712-5A resolves 26 mA per count and a charging laptop draws about
+// 150 mA against a MinSessionPeakMa of 120 - under two counts of margin. Inside
+// that margin the taper rule cannot reliably tell a charging laptop from a full
+// one, and getting it wrong cuts a laptop off part-charged. A client that knows
+// the real battery percentage can overrule it. These pin down exactly how far
+// that permission extends.
+
+TEST(app_managed_suppresses_the_taper_cutoff) {
+  Rig rig;
+  rig.controller.begin();
+  rig.controller.onRemote(Remote_AppManagedOn);
+  CHECK(rig.controller.appManaged());
+
+  rig.startCharging(2000);
+  runManaged(rig, 2000, 20u * 60u * 1000u);
+
+  // The same taper that cuts in cutOffLeaving. With a client in charge it must
+  // not, because the client is the one holding the battery percentage.
+  runManaged(rig, 300, config::TaperConfirmMs + 10000);
+
+  CHECK_EQ(rig.controller.state(), State_Charging);
+  CHECK(rig.relay.isClosed());
+}
+
+TEST(app_managed_still_obeys_an_explicit_cut) {
+  Rig rig;
+  rig.controller.begin();
+  rig.controller.onRemote(Remote_AppManagedOn);
+  rig.startCharging(2000);
+
+  // Suppressing the socket's own guess must not suppress the client's decision -
+  // that decision is the entire reason for the mode.
+  rig.controller.onRemote(Remote_Cut);
+
+  CHECK_EQ(rig.controller.state(), State_Cutoff);
+  CHECK_FALSE(rig.relay.isClosed());
+}
+
+TEST(app_managed_does_not_switch_off_overcurrent) {
+  Rig rig;
+  rig.controller.begin();
+  rig.controller.onRemote(Remote_AppManagedOn);
+  rig.startCharging(2000);
+
+  // Charge policy is negotiable; safety is not. No client gets to disable this.
+  rig.run(config::OvercurrentMa + 500, 4u * config::SampleIntervalMs);
+
+  CHECK_EQ(rig.controller.state(), State_Fault);
+  CHECK_FALSE(rig.relay.isClosed());
+}
+
+TEST(app_managed_does_not_switch_off_the_stuck_relay_check) {
+  Rig rig;
+  rig.controller.begin();
+  rig.controller.onRemote(Remote_AppManagedOn);
+  rig.startCharging(2000);
+  rig.controller.onRemote(Remote_Cut);
+  CHECK_EQ(rig.controller.state(), State_Cutoff);
+
+  rig.stuckRelay = true;
+  rig.run(2000, config::RelayStuckGraceMs + config::RelayStuckConfirmMs +
+                    (4 * config::SampleIntervalMs));
+
+  CHECK_EQ(rig.controller.state(), State_RelayStuck);
+}
+
+TEST(app_managed_stops_the_socket_probing_its_way_back_on) {
+  Rig rig;
+  rig.controller.begin();
+  rig.controller.onRemote(Remote_AppManagedOn);
+  rig.startCharging(2000);
+
+  // The client cuts at its own limit, exactly as the app does at 90%.
+  rig.controller.onRemote(Remote_Cut);
+  CHECK_EQ(rig.controller.state(), State_Cutoff);
+
+  // Left alone, the socket would close the contacts, see a laptop drawing
+  // charging current, and resume - charging it to 100%, which is the precise
+  // outcome the user set a limit to avoid. Power comes back when the client
+  // says so and not before.
+  runManaged(rig, 2000, config::ProbeChargedIntervalMs + 10000);
+
+  CHECK_EQ(rig.controller.state(), State_Cutoff);
+  CHECK_FALSE(rig.relay.isClosed());
+}
+
+TEST(a_client_that_goes_quiet_loses_the_decision) {
+  Rig rig;
+  rig.controller.begin();
+  rig.controller.onRemote(Remote_AppManagedOn);
+  rig.startCharging(2000);
+  rig.controller.onRemote(Remote_Cut);
+  CHECK(rig.controller.appManaged());
+
+  // A laptop carried out of range takes the app with it. If the claim held
+  // forever the socket would sit switched off with nothing able to turn it back
+  // on - no taper cutoff, no probe, and no client to ask.
+  rig.run(2000, config::AppManagedTimeoutMs + 10000);
+
+  CHECK_FALSE(rig.controller.appManaged());
+}
+
+TEST(a_client_that_keeps_talking_keeps_the_decision) {
+  Rig rig;
+  rig.controller.begin();
+  rig.controller.onRemote(Remote_AppManagedOn);
+  rig.startCharging(2000);
+
+  // The app re-sends A1 on a timer far shorter than the timeout, so a live
+  // client must never lose control to it.
+  for (uint8_t i = 0; i < 6; i++) {
+    rig.run(2000, config::AppManagedTimeoutMs / 2);
+    rig.controller.onRemote(Remote_AppManagedOn);
+  }
+
+  CHECK(rig.controller.appManaged());
+}
+
+TEST(handing_control_back_restores_the_taper_cutoff) {
+  Rig rig;
+  rig.controller.begin();
+  rig.controller.onRemote(Remote_AppManagedOn);
+  rig.startCharging(2000);
+  runManaged(rig, 2000, 20u * 60u * 1000u);
+  runManaged(rig, 300, config::TaperConfirmMs + 10000);
+  CHECK_EQ(rig.controller.state(), State_Charging);
+
+  // The analyzer keeps running while a client is in charge, so the socket does
+  // not have to wait for a fresh session to be able to cut again - it resumes
+  // with a live view rather than a stale one.
+  rig.controller.onRemote(Remote_AppManagedOff);
+  CHECK_FALSE(rig.controller.appManaged());
+
+  rig.run(300, config::TaperConfirmMs + 10000);
+
+  CHECK_EQ(rig.controller.state(), State_Cutoff);
+}
+
 TEST(no_remote_command_can_clear_a_stuck_relay_without_a_human) {
   Rig rig;
   cutOffLeaving(rig, 300);

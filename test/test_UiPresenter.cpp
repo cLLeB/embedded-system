@@ -41,7 +41,55 @@ TEST(status_screen_shows_state_and_live_current) {
   ui.render(makeStatus(State_Charging), l0, l1);
 
   CHECK_STR_EQ(l0, "CHARGING   1.24A");
-  CHECK_STR_EQ(l1, "02:15:33  pk2.00");
+
+  // The session peak used to sit on the right of this line. It is a number for
+  // diagnosing the algorithm, not for someone glancing at a socket to see how
+  // their laptop is doing, so the half line is deliberately left empty.
+  CHECK_STR_EQ(l1, "02:15:33        ");
+}
+
+// The display's top-right corner is its most valuable space. With no client
+// attached the live current is the best answer available to "how full is it";
+// with one, a real battery percentage is a far better one, and takes the slot.
+
+TEST(a_reported_battery_percentage_takes_the_top_line) {
+  UiPresenter ui;
+  char l0[LineBufferSize];
+  char l1[LineBufferSize];
+
+  ui.setBatteryPercent(87);
+  ui.render(makeStatus(State_Charging), l0, l1);
+
+  CHECK_STR_EQ(l0, "CHARGING     87%");
+
+  // The current is still worth showing - just not at the percentage's expense.
+  CHECK_STR_EQ(l1, "02:15:33   1.24A");
+}
+
+TEST(without_a_client_the_current_keeps_the_top_line) {
+  UiPresenter ui;
+  char l0[LineBufferSize];
+  char l1[LineBufferSize];
+
+  // -1 is "no client attached". The socket then has no percentage to show, so
+  // its own measurement is the best answer it has.
+  ui.setBatteryPercent(-1);
+  ui.render(makeStatus(State_Charging), l0, l1);
+
+  CHECK_STR_EQ(l0, "CHARGING   1.24A");
+  CHECK_STR_EQ(l1, "02:15:33        ");
+}
+
+TEST(a_full_battery_still_fits_the_line) {
+  UiPresenter ui;
+  char l0[LineBufferSize];
+  char l1[LineBufferSize];
+
+  ui.setBatteryPercent(100);
+  ui.render(makeStatus(State_Charging), l0, l1);
+
+  CHECK_EQ(strlen(l0), static_cast<size_t>(config::LcdColumns));
+  CHECK_STR_EQ(l0, "CHARGING    100%");
 }
 
 TEST(detail_screen_shows_the_cutoff_threshold) {

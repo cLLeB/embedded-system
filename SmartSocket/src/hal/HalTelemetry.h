@@ -28,6 +28,7 @@ class HalTelemetry : public ITelemetry {
 
   void publish(const SocketStatus& status, Millis nowMs);
   RemoteCommand takeCommand();
+  int16_t takeBatteryPercent();
 
  private:
   // Reads whatever bytes have arrived and parses complete lines. Never blocks:
@@ -35,9 +36,16 @@ class HalTelemetry : public ITelemetry {
   // that has stopped watching the load.
   void pump();
 
+  // Decodes one complete line. Split out from pump() because the accepted
+  // forms are no longer just single letters and the rules deserve one place.
+  void handleLine(const char* line, uint8_t len);
+
   unsigned long baud_;
   Millis lastPublishMs_;
   RemoteCommand pending_;
+
+  // Latest battery level the client reported, or -1 if none is unread.
+  int16_t batteryPercent_;
 
   // One line of input. Anything longer is a client fault, not a command, and is
   // discarded rather than overflowing.

@@ -77,10 +77,28 @@ class IButtonSource {
 // protocol exists any more than it has learned that a relay has a coil.
 enum RemoteCommand {
   Remote_None = 0,
-  Remote_Cut,       // open the relay now
-  Remote_Rearm,     // clear a cutoff and arm
-  Remote_Probe,     // stop waiting, look for a load now
-  Remote_StatusNow  // send one status line immediately
+  Remote_Cut,        // open the relay now
+  Remote_Rearm,      // clear a cutoff and arm
+  Remote_Probe,      // stop waiting, look for a load now
+  Remote_StatusNow,  // send one status line immediately
+
+  // Hand the full-charge decision to the client, and take it back.
+  //
+  // WHY THIS EXISTS. The ACS712-5A resolves 26 mA per count, and a charging
+  // laptop draws about 150 mA against a MinSessionPeakMa of 120 - under two
+  // counts of margin. Inside that margin the taper rule cannot reliably tell a
+  // charging laptop from a full one, and when it gets it wrong it cuts a laptop
+  // at 17%, which is far worse than not cutting at all.
+  //
+  // A connected client knows the actual battery percentage, which is the thing
+  // the sensor was only ever a proxy for. So when one is attached and says so,
+  // the socket stops guessing and does as it is told.
+  //
+  // Overcurrent, implausible readings and the stuck-relay check are NOT
+  // suspended by this. Those are safety, not charge policy, and no client gets
+  // to switch them off.
+  Remote_AppManagedOn,
+  Remote_AppManagedOff
 };
 
 // A link to something off-board - a phone, a PC, a serial monitor.
@@ -96,6 +114,14 @@ class ITelemetry {
 
   // One pending command, or Remote_None. Consumed by the call.
   virtual RemoteCommand takeCommand() = 0;
+
+  // The client's own battery level, 0-100, or -1 if none has arrived since the
+  // last call. Display only - nothing in the state machine reads it, because a
+  // socket with no client attached must behave identically.
+  //
+  // Not pure: a link that cannot report one is still a valid link, and the
+  // fakes in the test rig should not have to care.
+  virtual int16_t takeBatteryPercent() { return -1; }
 };
 
 // Persistence for the learned device profile.

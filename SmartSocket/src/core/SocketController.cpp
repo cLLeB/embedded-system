@@ -20,7 +20,9 @@ SocketController::SocketController(IClock& clock, ICurrentSensor& sensor,
       relaySuspect_(false),
       pendingAlert_(Buzz_Silent),
       alertPending_(false),
-      plugCandidate_(false) {
+      plugCandidate_(false),
+      appManaged_(false),
+      appManagedRefreshedMs_(0) {
   profile_.learnedTaperPct = config::TaperRatioDefaultPct;
   profile_.lastPeakMa = 0;
   profile_.cutoffCount = 0;
@@ -178,6 +180,18 @@ void SocketController::learnFromSession() {
 void SocketController::handleVerdict(ChargeVerdict verdict) {
   switch (verdict) {
     case Verdict_Full:
+      // The one verdict a client can overrule. It is a guess made from 26 mA
+      // resolution; a client that reports an actual battery percentage has a
+      // better answer, and the cost of this being wrong is a laptop cut off
+      // part-charged.
+      //
+      // Deliberately not `break` before learnFromSession(): while a client is
+      // in charge the peak this session saw is not evidence of a full charge,
+      // so learning from it would poison the stored profile for the times no
+      // client is attached.
+      if (appManaged_) {
+        break;
+      }
       learnFromSession();
       enter(State_Cutoff);
       break;
@@ -202,6 +216,18 @@ void SocketController::update() {
     return;
   }
   lastSampleMs_ = now;
+
+  // BEFORE ANY STATE HANDLING, because Cutoff returns early below and Cutoff is
+  // the state where this matters most.
+  //
+  // A client that has gone quiet has stopped managing anything, whatever it last
+  // claimed. While the claim stands both the taper cutoff and the recovery probe
+  // are suppressed, so an absent client would leave the socket switched off with
+  // nothing able to turn it on again - which is the one failure worse than
+  // cutting too early.
+  if (appManaged_ && (now - appManagedRefreshedMs_) >= config::AppManagedTimeoutMs) {
+    appManaged_ = false;
+  }
 
   // Cutoff holds power off, and the relay stays open, so there is nothing to
   // read. Time spent here is what "saved" means.
@@ -233,7 +259,18 @@ void SocketController::update() {
       }
     }
 
-    if (inCutoff >= probeIntervalMs_) {
+    // NOT WHILE A CLIENT IS MANAGING THE CHARGE. Probing exists because an open
+    // relay makes the socket blind - it cannot tell a full device from an empty
+    // one from an empty socket, so every so often it closes the contacts and
+    // looks. A client that reports a battery percentage is not blind, and does
+    // not need to guess.
+    //
+    // Worse than unnecessary, it would be actively wrong: the app cuts at 90%,
+    // and fifteen minutes later the socket closes the relay, sees a laptop
+    // drawing charging current, and resumes - charging it to 100%, which is the
+    // exact outcome the user set a limit to avoid. The app decides when power
+    // comes back, by sending a re-arm.
+    if (!appManaged_ && inCutoff >= probeIntervalMs_) {
       enter(State_Probing);
     }
     return;
@@ -382,6 +419,18 @@ void SocketController::onRemote(RemoteCommand command) {
       if (state_ == State_Cutoff) {
         enter(State_Probing);
       }
+      break;
+
+    case Remote_AppManagedOn:
+      appManaged_ = true;
+      appManagedRefreshedMs_ = clock_.now();
+      break;
+
+    case Remote_AppManagedOff:
+      // Handing the decision back. The analyzer keeps running throughout, so
+      // the socket resumes with a live view rather than a stale one - it does
+      // not have to wait for a fresh session to be able to cut again.
+      appManaged_ = false;
       break;
 
     case Remote_StatusNow:

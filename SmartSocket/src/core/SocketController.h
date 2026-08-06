@@ -50,6 +50,10 @@ class SocketController {
   SocketStatus status() const;
   SocketState state() const { return state_; }
 
+  // True while a client has taken over the full-charge decision. Safety rules
+  // are unaffected; see Remote_AppManagedOn.
+  bool appManaged() const { return appManaged_; }
+
   // Reports the buzzer pattern requested by the most recent state change, once.
   // Returns false if nothing changed since the last call.
   //
@@ -94,6 +98,15 @@ class SocketController {
   BuzzerPattern pendingAlert_;
   bool alertPending_;
   bool plugCandidate_;
+
+  // Set by Remote_AppManagedOn. Suppresses the taper cutoff and the recovery
+  // probe - the two things that would otherwise overrule the client - and
+  // nothing else.
+  bool appManaged_;
+
+  // When the claim was last renewed. It expires after AppManagedTimeoutMs so a
+  // client that vanishes cannot leave the socket switched off for good.
+  Millis appManagedRefreshedMs_;
 };
 
 }  // namespace smartsocket
