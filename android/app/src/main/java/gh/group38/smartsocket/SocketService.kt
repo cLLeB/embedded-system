@@ -7,12 +7,14 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.ServiceCompat
+import gh.group38.smartsocket.data.LinkState
 import gh.group38.smartsocket.data.SocketRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 /**
@@ -42,14 +44,23 @@ class SocketService : Service() {
 
         watcher?.cancel()
         watcher = scope.launch {
-            repo.status.collect { status ->
-                // Same id, so this replaces rather than stacks.
-                val manager = getSystemService(android.app.NotificationManager::class.java)
-                manager?.notify(
-                    Notifications.ONGOING_ID,
-                    Notifications.ongoing(this@SocketService, status, repo.deviceName),
-                )
-            }
+            // The link as well as the status: while the app is closed this
+            // notification is the only thing the user can see, so it is the only
+            // place a dropped link can be reported.
+            combine(repo.status, repo.linkState) { status, link -> status to link }
+                .collect { (status, link) ->
+                    // Same id, so this replaces rather than stacks.
+                    val manager = getSystemService(android.app.NotificationManager::class.java)
+                    manager?.notify(
+                        Notifications.ONGOING_ID,
+                        Notifications.ongoing(
+                            context = this@SocketService,
+                            status = status,
+                            deviceName = repo.deviceName,
+                            reconnecting = link is LinkState.Reconnecting,
+                        ),
+                    )
+                }
         }
 
         // The link is not ours to rebuild, so being restarted without an intent
@@ -80,12 +91,24 @@ class SocketService : Service() {
     }
 
     companion object {
+        /**
+         * Safe to call from the background.
+         *
+         * Android 12+ throws ForegroundServiceStartNotAllowedException if the app
+         * is not in the foreground or covered by an exemption. The reconnect that
+         * BootReceiver kicks off completes seconds after the broadcast returns, by
+         * which time the boot exemption may have lapsed - and losing the
+         * notification is not worth crashing the process the link lives in. The
+         * link keeps working either way; it is just killable sooner.
+         */
         fun start(context: Context) {
             val intent = Intent(context, SocketService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
             }
         }
 

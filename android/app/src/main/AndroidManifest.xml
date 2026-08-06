@@ -8,8 +8,13 @@
       permissions that do not exist there.
     -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
-        android:usesPermissionFlags="neverForLocation" />
+
+    <!--
+      BLUETOOTH_SCAN is deliberately absent. The app lists bonded devices only -
+      it never runs discovery - and getBondedDevices() is gated on
+      BLUETOOTH_CONNECT. Declaring SCAN bought no capability and cost the user a
+      "find nearby devices" prompt.
+    -->
 
     <uses-permission android:name="android.permission.BLUETOOTH"
         android:maxSdkVersion="30" />
@@ -17,6 +22,24 @@
         android:maxSdkVersion="30" />
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      Reconnect to the last socket after a restart. A phone that reboots
+      overnight while charging would otherwise wake up unmanaged, and the user
+      would not know until the battery had sat at 100% until morning.
+    -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!--
+      Doze and the OEM task killers. A connectedDevice foreground service is
+      mostly safe on stock Android, but skins that aggressively kill background
+      apps will drop the link and the cutoff with it. Asked for once, and the
+      user can refuse.
+
+      Note this permission is restricted on Google Play; this app is sideloaded,
+      which is the case it is allowed in.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!--
       Android 14 requires a foreground service to declare a type, and to hold the
@@ -56,6 +79,37 @@
             android:name=".SocketService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <!--
+          BOOT_COMPLETED is one of the few exemptions to Android 12's ban on
+          starting a foreground service from the background, which is what makes
+          reconnecting here legal at all.
+        -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="false"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+          Hands the exported history CSV to whatever app the user picks from the
+          share sheet. Not exported and not permission-granting by itself: the
+          receiving app gets read access to one file, for one share, because the
+          intent carries FLAG_GRANT_READ_URI_PERMISSION.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

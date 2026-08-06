@@ -1,9 +1,14 @@
 package gh.group38.smartsocket
 
 import android.Manifest
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -25,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import gh.group38.smartsocket.data.LinkState
 import gh.group38.smartsocket.ui.ConnectScreen
@@ -44,11 +50,16 @@ class MainActivity : ComponentActivity() {
      * Android 12 split Bluetooth into runtime permissions. Below 31 the legacy
      * manifest permissions are granted at install, so there is nothing to ask
      * for and the request must be skipped rather than failed.
+     *
+     * BLUETOOTH_SCAN is deliberately not here. The app lists bonded devices
+     * only - it never runs discovery - and getBondedDevices() is gated on
+     * BLUETOOTH_CONNECT. Asking for SCAN as well bought nothing and put a
+     * "find nearby devices" prompt in front of the user for a capability the
+     * app does not use.
      */
     private val permissions: Array<String> = buildList {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             add(Manifest.permission.BLUETOOTH_CONNECT)
-            add(Manifest.permission.BLUETOOTH_SCAN)
         }
         // 13+ made notifications opt-in. Asked for alongside Bluetooth rather
         // than at the moment of the first cutoff, which would be the worst
@@ -61,7 +72,7 @@ class MainActivity : ComponentActivity() {
     /** Bluetooth is what gates the device list; notifications are a bonus. */
     private val bluetoothPermissions: Array<String> =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
+            arrayOf(Manifest.permission.BLUETOOTH_CONNECT)
         } else {
             emptyArray()
         }
@@ -98,10 +109,48 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         vm.refreshDevices()
+        askOnceForBatteryExemption()
     }
 
     private fun hasPermissions(): Boolean = bluetoothPermissions.all {
         ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /**
+     * Asks Android to stop dozing this app, once, and never again if refused.
+     *
+     * A connectedDevice foreground service survives stock Android's Doze, but the
+     * OEM skins common on cheap handsets kill background apps regardless of
+     * service type - and when they do, the link dies silently and the cutoff
+     * never fires. The user is told it happened by nothing at all, which is the
+     * worst failure this app has.
+     *
+     * Deferred until Bluetooth has been granted so it is not a second dialog
+     * stacked on the first launch, and recorded as asked whether or not it was
+     * allowed: pestering is worse than going without.
+     */
+    private fun askOnceForBatteryExemption() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        if (!hasPermissions()) return
+
+        val prefs = getSharedPreferences("smart_socket", Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_ASKED_DOZE, false)) return
+
+        val power = getSystemService(PowerManager::class.java) ?: return
+        if (power.isIgnoringBatteryOptimizations(packageName)) return
+
+        prefs.edit().putBoolean(KEY_ASKED_DOZE, true).apply()
+
+        // Not every ROM ships this screen, and a missing one must not take the
+        // app down on launch.
+        runCatching {
+            startActivity(
+                Intent(
+                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:$packageName"),
+                )
+            )
+        }
     }
 
     private fun askForPermissions() {
@@ -110,6 +159,10 @@ class MainActivity : ComponentActivity() {
         } else {
             requestPermissions.launch(permissions)
         }
+    }
+
+    private companion object {
+        const val KEY_ASKED_DOZE = "asked_doze_exemption"
     }
 }
 
@@ -122,7 +175,9 @@ private fun App(vm: SocketViewModel, onRequestPermissions: () -> Unit) {
     val granted by vm.permissionGranted.collectAsState()
     val battery by vm.batteryPercent.collectAsState()
     val limit by vm.batteryLimit.collectAsState()
+    val managing by vm.appManaging.collectAsState()
     val history by vm.history.collectAsState()
+    val context = LocalContext.current
 
     AnimatedContent(
         targetState = screen,
@@ -149,11 +204,15 @@ private fun App(vm: SocketViewModel, onRequestPermissions: () -> Unit) {
 
             Screen.DASHBOARD -> DashboardScreen(
                 status = status,
+                linkState = link,
                 deviceName = vm.connectedName,
                 batteryLimit = limit,
                 batteryPercent = battery,
+                resumeAt = vm.resumeAt,
+                appManaging = managing,
                 onCommand = vm::send,
                 onBatteryLimit = vm::setBatteryLimit,
+                onAppManaging = vm::setAppManaging,
                 onDisconnect = vm::disconnect,
                 onHistory = vm::openHistory,
                 modifier = Modifier.windowInsetsPadding(WindowInsets.systemBars),
@@ -163,6 +222,11 @@ private fun App(vm: SocketViewModel, onRequestPermissions: () -> Unit) {
                 sessions = history,
                 onBack = vm::closeHistory,
                 onClear = vm::clearHistory,
+                onExport = {
+                    vm.exportHistory()?.let {
+                        context.startActivity(Intent.createChooser(it, "Export charge history"))
+                    }
+                },
                 modifier = Modifier.windowInsetsPadding(WindowInsets.systemBars),
             )
         }

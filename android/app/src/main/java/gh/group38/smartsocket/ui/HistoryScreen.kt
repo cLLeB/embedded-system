@@ -33,6 +33,7 @@ fun HistoryScreen(
     sessions: List<ChargeSession>,
     onBack: () -> Unit,
     onClear: () -> Unit,
+    onExport: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -54,12 +55,20 @@ fun HistoryScreen(
                 modifier = Modifier.clickableNoRipple(onBack),
             )
             if (sessions.isNotEmpty()) {
-                Text(
-                    text = "Clear",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Faint,
-                    modifier = Modifier.clickableNoRipple(onClear),
-                )
+                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    Text(
+                        text = "Export",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Gold,
+                        modifier = Modifier.clickableNoRipple(onExport),
+                    )
+                    Text(
+                        text = "Clear",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Faint,
+                        modifier = Modifier.clickableNoRipple(onClear),
+                    )
+                }
             }
         }
 

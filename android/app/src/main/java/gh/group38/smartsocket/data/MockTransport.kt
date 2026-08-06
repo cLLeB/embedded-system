@@ -31,13 +31,20 @@ class MockTransport(private val scope: CoroutineScope) : SocketTransport {
 
     private var loop: Job? = null
 
-    override suspend fun connect(device: SocketDevice) {
+    override suspend fun connect(device: SocketDevice): Boolean {
         _linkState.value = LinkState.Connecting
         delay(700)
         _linkState.value = LinkState.Connected(device)
         loop?.cancel()
         loop = scope.launch { run() }
+        return true
     }
+
+    /**
+     * Accepted and ignored. The demo has no display to update and no charge
+     * policy to hand over, so `A` and `B` lines have nothing to do here.
+     */
+    override suspend fun sendLine(line: String) = Unit
 
     override suspend fun send(command: SocketCommand) {
         val now = _status.value
@@ -138,7 +145,7 @@ class MockTransport(private val scope: CoroutineScope) : SocketTransport {
         val DEVICE = SocketDevice(
             name = "Demo socket",
             address = "00:00:00:00:00:00",
-            isDemo = true,
+            kind = LinkKind.DEMO,
         )
     }
 }

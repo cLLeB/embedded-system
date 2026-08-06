@@ -1,13 +1,11 @@
 package gh.group38.smartsocket
 
 import android.app.Application
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
-import android.os.BatteryManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import gh.group38.smartsocket.data.HistoryExport
 import gh.group38.smartsocket.data.LinkState
 import gh.group38.smartsocket.data.MockTransport
 import gh.group38.smartsocket.data.SocketCommand
@@ -21,16 +19,19 @@ import kotlinx.coroutines.launch
 enum class Screen { SPLASH, ONBOARDING, CONNECT, CONNECTING, DASHBOARD, HISTORY }
 
 /**
- * Screen state and the phone's own battery.
+ * Screen state, and nothing that has to outlive the screen.
  *
- * The link itself lives in [gh.group38.smartsocket.data.SocketRepository] on the
- * Application, not here - a connection owned by a ViewModel dies with the
- * screen, and can only notify someone already looking at it.
+ * The link lives in [gh.group38.smartsocket.data.SocketRepository] and the
+ * battery cutoff in [gh.group38.smartsocket.data.BatteryWatcher], both on the
+ * Application - anything owned by a ViewModel dies when the activity is
+ * destroyed, and can only ever serve someone already looking at it. What is left
+ * here is which screen to show, which is exactly what should die with the screen.
  */
 class SocketViewModel(app: Application) : AndroidViewModel(app) {
 
     private val prefs = app.getSharedPreferences("smart_socket", Context.MODE_PRIVATE)
     private val repo = (app as SmartSocketApp).repository
+    private val battery = (app as SmartSocketApp).battery
 
     private val _screen = MutableStateFlow(Screen.SPLASH)
     val screen: StateFlow<Screen> = _screen.asStateFlow()
@@ -45,45 +46,39 @@ class SocketViewModel(app: Application) : AndroidViewModel(app) {
     private val _permissionGranted = MutableStateFlow(false)
     val permissionGranted: StateFlow<Boolean> = _permissionGranted.asStateFlow()
 
-    private val _batteryPercent = MutableStateFlow(0)
-    val batteryPercent: StateFlow<Int> = _batteryPercent.asStateFlow()
+    /** Read-only here. The watch itself runs on the Application. */
+    val batteryPercent: StateFlow<Int> = battery.percent
+    val batteryLimit: StateFlow<Int> = battery.limit
+    val appManaging: StateFlow<Boolean> = battery.managing
 
-    private val _batteryLimit = MutableStateFlow(prefs.getInt(KEY_LIMIT, 90))
-    val batteryLimit: StateFlow<Int> = _batteryLimit.asStateFlow()
+    /** Where power comes back on, ten points below the limit. */
+    val resumeAt: Int get() = battery.resumeAt
+
+    /** Names the BLE module once a Bluetooth LE link is up. */
+    val bleProfileName: String? get() = repo.bleProfileName
 
     val connectedName: String get() = repo.deviceName
 
-    /** Set once per connection, so crossing the limit only fires one cut. */
-    private var limitHandled = false
-
-    private val batteryReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
-            val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
-            if (level >= 0 && scale > 0) {
-                _batteryPercent.value = level * 100 / scale
-                maybeCutForBattery()
-            }
-        }
-    }
-
     init {
-        app.registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-
-        // Follow the link, so a drop while the app is open returns to the picker
-        // and the foreground service is not left running for nothing.
+        // Screen navigation only. Starting and stopping the foreground service
+        // used to happen here too, which left it running whenever a link failed
+        // for good after this ViewModel was gone; SmartSocketApp owns that now.
         viewModelScope.launch {
             repo.linkState.collect { state ->
                 when (state) {
                     is LinkState.Connected -> {
-                        SocketService.start(getApplication())
                         if (_screen.value == Screen.CONNECTING) _screen.value = Screen.DASHBOARD
                     }
 
                     is LinkState.Connecting -> _screen.value = Screen.CONNECTING
 
+                    // Deliberately does nothing. The link is coming back on its
+                    // own, so the screen stays where it is - bouncing the user to
+                    // the picker would throw away the one case the background
+                    // service exists for.
+                    is LinkState.Reconnecting -> Unit
+
                     else -> {
-                        SocketService.stop(getApplication())
                         if (_screen.value == Screen.DASHBOARD || _screen.value == Screen.CONNECTING) {
                             _screen.value = Screen.CONNECT
                         }
@@ -91,11 +86,6 @@ class SocketViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
-    }
-
-    override fun onCleared() {
-        runCatching { getApplication<Application>().unregisterReceiver(batteryReceiver) }
-        super.onCleared()
     }
 
     fun onSplashDone() {
@@ -123,7 +113,6 @@ class SocketViewModel(app: Application) : AndroidViewModel(app) {
     fun bluetoothOn(): Boolean = repo.bluetoothOn()
 
     fun connect(device: SocketDevice) {
-        limitHandled = false
         _screen.value = Screen.CONNECTING
         repo.connect(device)
     }
@@ -142,38 +131,26 @@ class SocketViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearHistory() = repo.history.clear()
 
-    fun setBatteryLimit(limit: Int) {
-        _batteryLimit.value = limit
-        prefs.edit().putInt(KEY_LIMIT, limit).apply()
-        limitHandled = false
-        maybeCutForBattery()
-    }
+    /** Null when there is nothing recorded yet, or the copy could not be made. */
+    fun exportHistory(): Intent? =
+        HistoryExport.shareIntent(getApplication(), repo.history.sessions.value)
+
+    fun setBatteryLimit(limit: Int) = battery.setLimit(limit)
+
+    fun setAppManaging(enabled: Boolean) = battery.setManaging(enabled)
 
     fun disconnect() {
+        // Give the socket its own judgement back before dropping the link, so it
+        // is never left with nothing watching the charge. A link that dies on
+        // its own cannot do this, which is why the claim also expires on a timer.
+        battery.handBack()
+
         repo.disconnect()
         _screen.value = Screen.CONNECT
         refreshDevices()
     }
 
-    /**
-     * The feature the sensor cannot provide.
-     *
-     * A phone charging on 230 V draws about 20 mA, inside the ACS712's noise, so
-     * the socket cannot tell a charging phone from an empty outlet. The phone
-     * knows its own battery, so it says so.
-     */
-    private fun maybeCutForBattery() {
-        if (limitHandled) return
-        if (!repo.isConnected) return
-        if (_batteryPercent.value < _batteryLimit.value) return
-        if (!repo.status.value.state.isPowerOn) return
-
-        limitHandled = true
-        send(SocketCommand.CUT)
-    }
-
     private companion object {
         const val KEY_ONBOARDED = "onboarded"
-        const val KEY_LIMIT = "battery_limit"
     }
 }

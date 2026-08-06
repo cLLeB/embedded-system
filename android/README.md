@@ -32,6 +32,8 @@ minSdk 26. `local.properties` points at the SDK.
 | **Charge limit** | Stop charging **this phone** at 80 / 90 / 100% |
 | **Notifications** | Tells you when power was cut, even with the app closed |
 | **History** | Every cutoff, with peak, taper point and duration, plus a chart |
+| **Export** | The history as a CSV, out through the share sheet |
+| **Reconnects itself** | Rebuilds a dropped link for about eight minutes before giving up |
 | **Demo mode** | A simulated socket, for when the real one is in another room |
 
 ### The charge limit is the point
@@ -58,12 +60,28 @@ data/
   SocketTransport.kt  the interface
   BluetoothTransport  real link, RFCOMM to an HC-05
   MockTransport       a socket that exists only in software
+  ReconnectPolicy.kt  how long to wait before the nth retry
+  HistoryStore.kt     the flat file
+  HistoryCsv.kt       history rendered for a spreadsheet
+  HistoryExport.kt    that CSV into a share intent
 ui/
   Theme.kt            the palette
   Components.kt       the shared pieces
   *Screen.kt          splash, onboarding, connect, dashboard
 SocketViewModel.kt    state, battery watching, command dispatch
 ```
+
+### Tests
+
+```powershell
+cd android
+.\gradlew.bat :app:testDebugUnitTest
+```
+
+27 plain JVM tests, no emulator and no Robolectric. Everything worth testing —
+the wire format, the reconnect schedule, the export — was written with no
+Android in it so that it could be tested this way, which is the same split that
+lets the firmware's `src/core` run on a PC.
 
 **`SocketTransport` has two implementations for the same reason the firmware has
 `ICurrentSensor`:** so the thing above it can be built and tested without the
@@ -78,6 +96,41 @@ seconds.
 Bluetooth link drops mid-line every time the phone moves out of range, so partial
 and corrupt lines are the normal case — and a half-parsed line would show a
 number that never existed.
+
+### An open socket is not a Smart Socket
+
+`BluetoothTransport.connect` does not report success when the RFCOMM socket
+opens. It sends `?` and waits for one line it can parse, up to three times.
+
+Every bonded device that speaks SPP accepts a connection, and a swapped TX wire
+or a module left at the wrong baud rate connects *perfectly* and then says
+nothing at all. Without the handshake that arrives as a dashboard full of zeroes
+with no clue which of the two it was. With it, the two cases are told apart by
+whether any bytes arrived before the timeout:
+
+| What happened | What the user is told |
+|---|---|
+| No bytes at all | Check `TXD` → Arduino pin 0, and that the socket is powered |
+| Bytes, but nothing parses | Almost always the baud rate — the firmware uses 9600 |
+
+### Reconnecting
+
+A dropped link is rebuilt on a schedule that doubles from 2 s to a one-minute
+ceiling, for twelve attempts — about eight minutes. Two cases pull in opposite
+directions: a radio glitch wants a retry immediately, and someone who walked
+into another room wants one much later. The ceiling serves the second without
+making the first wait.
+
+It **gives up** rather than retrying forever, and posts a notification when it
+does. A foreground notification the user cannot dismiss, sitting over a socket
+that has been switched off at the wall, is worse than an honest "lost it".
+
+`LinkState.Reconnecting` is a separate state from `Connecting` because the two
+mean opposite things to the UI: a reconnect must **not** throw the user back to
+the device picker and must **not** release the foreground service. The dashboard
+keeps the last readings on screen, labelled as the last ones, and disables the
+command buttons — a button that looks like it worked and did not is worse than a
+dead one on a device that switches mains.
 
 ---
 
@@ -142,9 +195,14 @@ legible if anyone wants to look at it.
 The chart is bars, not a line: each charge is a discrete event, and a line
 between them would imply values in the gaps that were never measured.
 
+**Export** writes the same rows to the cache directory as a CSV and hands it out
+through a share intent, so it can go to email, Drive, or anything else with no
+storage permission on any Android version. Two time columns: an ISO one for a
+human and a millisecond one for a spreadsheet that will not parse it. Rows run
+**oldest first**, the reverse of the screen — the newest charge belongs at the
+top of a list, but a column a spreadsheet is going to plot has to run forwards.
+
 ## Not built yet
 
-- **Connecting to real hardware has never been tested**, because there is no
-  HC-05 yet. Everything else runs
-- Reconnecting automatically after the link drops
-- Exporting history
+- **Connecting to real hardware has never been tested.** The HC-05 is here and
+  wired but the first end-to-end run has not happened. Everything else runs

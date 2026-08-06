@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,6 +27,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import gh.group38.smartsocket.data.LinkState
+import gh.group38.smartsocket.data.ReconnectPolicy
 import gh.group38.smartsocket.data.SocketCommand
 import gh.group38.smartsocket.data.SocketState
 import gh.group38.smartsocket.data.SocketStatus
@@ -33,15 +37,20 @@ import java.util.Locale
 @Composable
 fun DashboardScreen(
     status: SocketStatus,
+    linkState: LinkState,
     deviceName: String,
     batteryLimit: Int,
     batteryPercent: Int,
+    resumeAt: Int,
+    appManaging: Boolean,
     onCommand: (SocketCommand) -> Unit,
     onBatteryLimit: (Int) -> Unit,
+    onAppManaging: (Boolean) -> Unit,
     onDisconnect: () -> Unit,
     onHistory: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val reconnecting = linkState as? LinkState.Reconnecting
     val tint = status.state.tint()
 
     Column(
@@ -66,9 +75,17 @@ fun DashboardScreen(
                         color = Bone,
                     )
                     Text(
-                        text = if (status.relayClosed) "Outlet live" else "Outlet off",
+                        text = when {
+                            reconnecting != null -> "Reconnecting"
+                            status.relayClosed -> "Outlet live"
+                            else -> "Outlet off"
+                        },
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (status.relayClosed) Caution else Muted,
+                        color = when {
+                            reconnecting != null -> Gold
+                            status.relayClosed -> Caution
+                            else -> Muted
+                        },
                     )
                 }
             }
@@ -78,6 +95,11 @@ fun DashboardScreen(
                 color = Faint,
                 modifier = Modifier.clickableNoRipple(onDisconnect),
             )
+        }
+
+        if (reconnecting != null) {
+            Spacer(Modifier.height(20.dp))
+            ReconnectingBanner(attempt = reconnecting.attempt)
         }
 
         Spacer(Modifier.height(30.dp))
@@ -124,17 +146,22 @@ fun DashboardScreen(
 
         // --- controls --------------------------------------------------------
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Nothing can be commanded down a link that is not there. A button
+            // that looks like it worked and did not is worse than a dead one on
+            // a device that switches mains.
+            val live = reconnecting == null
+
             OutlineButton(
                 text = "Cut power",
                 onClick = { onCommand(SocketCommand.CUT) },
-                enabled = status.state.isPowerOn,
+                enabled = live && status.state.isPowerOn,
                 tint = Alarm,
                 modifier = Modifier.weight(1f),
             )
             OutlineButton(
                 text = if (status.state == SocketState.CUTOFF) "Turn back on" else "Re-arm",
                 onClick = { onCommand(SocketCommand.REARM) },
-                enabled = status.state == SocketState.CUTOFF || status.state.isAlarm,
+                enabled = live && (status.state == SocketState.CUTOFF || status.state.isAlarm),
                 tint = Gold,
                 modifier = Modifier.weight(1f),
             )
@@ -145,6 +172,7 @@ fun DashboardScreen(
             OutlineButton(
                 text = "Check for a device now",
                 onClick = { onCommand(SocketCommand.PROBE) },
+                enabled = reconnecting == null,
                 tint = Bone,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -162,7 +190,11 @@ fun DashboardScreen(
                     FieldLabel("This phone")
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = "Stop charging at $batteryLimit%",
+                        text = if (appManaging) {
+                            "Charge to $batteryLimit%, back on at $resumeAt%"
+                        } else {
+                            "The socket decides for itself"
+                        },
                         style = MaterialTheme.typography.titleMedium,
                         color = Bone,
                     )
@@ -188,11 +220,23 @@ fun DashboardScreen(
                     OutlineButton(
                         text = "$limit%",
                         onClick = { onBatteryLimit(limit) },
-                        tint = if (limit == batteryLimit) Gold else Muted,
+                        tint = if (limit == batteryLimit && appManaging) Gold else Muted,
                         modifier = Modifier.weight(1f),
                     )
                 }
             }
+
+            Spacer(Modifier.height(12.dp))
+
+            // Switching this off tells the socket to go back to deciding for
+            // itself, which is the only sensible thing for it to do when nobody
+            // is managing it - not to sit there doing nothing.
+            OutlineButton(
+                text = if (appManaging) "Let the socket decide" else "Let this app manage charging",
+                onClick = { onAppManaging(!appManaging) },
+                tint = if (appManaging) Muted else Gold,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
 
         Spacer(Modifier.height(16.dp))
@@ -230,6 +274,46 @@ fun DashboardScreen(
                 )
             }
         }
+    }
+}
+
+/**
+ * Says the reading is old, and that something is being done about it.
+ *
+ * The numbers below stay on screen rather than being blanked: the last thing
+ * the socket said is still the most useful thing on the page, as long as it is
+ * labelled as the last thing rather than the current one.
+ */
+@Composable
+private fun ReconnectingBanner(attempt: Int) {
+    Panel(accent = true, modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(7.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(Gold),
+            )
+            Text(
+                text = "Reconnecting",
+                style = MaterialTheme.typography.titleMedium,
+                color = Bone,
+                modifier = Modifier.padding(start = 12.dp),
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "$attempt of ${ReconnectPolicy.MAX_ATTEMPTS}",
+                style = MaterialTheme.typography.labelSmall,
+                color = Faint,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "The link dropped. The readings below are the last ones the " +
+                "socket sent. It keeps working on its own while this reconnects.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = Muted,
+        )
     }
 }
 

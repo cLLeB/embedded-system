@@ -27,6 +27,10 @@ object Notifications {
     const val ONGOING_ID = 1001
     private const val ALERT_ID = 1002
 
+    // Its own id, so losing the link never overwrites the "your laptop is
+    // charged" that was the point of being connected in the first place.
+    private const val LINK_LOST_ID = 1003
+
     fun ensureChannels(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
 
@@ -52,8 +56,17 @@ object Notifications {
         )
     }
 
-    fun ongoing(context: Context, status: SocketStatus, deviceName: String): Notification {
+    fun ongoing(
+        context: Context,
+        status: SocketStatus,
+        deviceName: String,
+        reconnecting: Boolean = false,
+    ): Notification {
         val text = when {
+            // First, because during a reconnect every other line here would be
+            // reporting a measurement that is minutes old as if it were now.
+            reconnecting -> "Reconnecting · last seen ${status.state.label.lowercase(Locale.UK)}"
+
             status.state == SocketState.CHARGING ->
                 String.format(Locale.UK, "Charging · %.2f A", status.amps)
 
@@ -116,6 +129,34 @@ object Notifications {
                 .setContentIntent(openApp(context))
                 .setAutoCancel(false)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
+                .build(),
+        )
+    }
+
+    /**
+     * The socket is no longer being watched.
+     *
+     * Worth interrupting for. Someone who set a cutoff and walked away has no
+     * other way to learn that it is not going to happen, and a charger left on
+     * overnight is the exact thing this project exists to prevent.
+     */
+    fun alertLinkLost(context: Context, deviceName: String) {
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+
+        val body = "Lost the Bluetooth link to $deviceName and could not get it back. " +
+            "The socket is still running on its own, but this phone is no longer " +
+            "watching it."
+
+        manager.notify(
+            LINK_LOST_ID,
+            NotificationCompat.Builder(context, ALERT_CHANNEL)
+                .setSmallIcon(R.drawable.ic_stat_socket)
+                .setContentTitle("Disconnected")
+                .setContentText(body)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+                .setContentIntent(openApp(context))
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .build(),
         )
     }

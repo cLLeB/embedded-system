@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Exactly one directory is shared, and it holds one throwaway copy of the
+  charge history. The app's real files - the history itself and the saved
+  battery limit - are not reachable through this provider.
+-->
+<paths>
+    <cache-path
+        name="export"
+        path="export/" />
+</paths>

@@ -180,8 +180,19 @@ private fun DeviceRow(device: SocketDevice, onClick: () -> Unit) {
                 style = MaterialTheme.typography.titleMedium,
                 color = Bone,
             )
+            // The radio, alongside the address. Most modules sold as an "HC-05"
+            // are Bluetooth LE parts wearing the name, and which one you have
+            // decides everything about how the app talks to it - so it is worth
+            // saying out loud rather than leaving the user to wonder why two
+            // identically-named devices behave differently.
             Text(
-                text = device.address,
+                text = when (device.kind) {
+                    gh.group38.smartsocket.data.LinkKind.BLE ->
+                        "${device.address}  ·  Bluetooth LE"
+                    gh.group38.smartsocket.data.LinkKind.CLASSIC ->
+                        "${device.address}  ·  Bluetooth Classic"
+                    gh.group38.smartsocket.data.LinkKind.DEMO -> device.address
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = Faint,
             )
