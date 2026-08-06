@@ -1,0 +1,83 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <!--
+    An installed alternative to the bare .exe.
+
+    The published SmartSocket.exe is self-contained and runs by double-clicking,
+    which is the right thing for handing to a marker on a flash drive. This is
+    for the other case: a machine where it should live in Program Files, appear
+    in the Start menu, show up in Apps and Features, and uninstall cleanly.
+
+    Same single file inside, so the two are interchangeable - this only decides
+    where it lands and who knows about it.
+  -->
+  <Package Name="Smart Socket"
+           Manufacturer="Group 38"
+           Version="1.0.0.0"
+           UpgradeCode="6F2E9C41-5B3A-4D8E-9A17-2C4F8B1D6E30"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <!--
+      Every 1.0.x replaces the last rather than installing alongside it.
+      Scheduled afterInstallValidate so the old copy is gone before the new one
+      is laid down - the app is one file, and two of it in Program Files would
+      leave whichever the shortcut happened to point at.
+    -->
+    <MajorUpgrade
+      Schedule="afterInstallValidate"
+      DowngradeErrorMessage="A newer version of Smart Socket is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Windows 10 1809, the floor the WinRT Bluetooth LE APIs need. -->
+    <Launch
+      Condition="Installed OR (VersionNT &gt;= 603)"
+      Message="Smart Socket needs Windows 10 or later." />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Smart Socket" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="AppShortcutFolder" Name="Smart Socket" />
+    </StandardDirectory>
+
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+      <Component Id="MainExecutable" Guid="A83D5E27-91C4-4F60-8B2A-7D1E5C9F4A88">
+        <File Id="SmartSocketExe"
+              Source="$(var.PublishDir)\SmartSocket.exe"
+              KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <Component Id="StartMenuShortcut" Directory="AppShortcutFolder"
+               Guid="C15B7A93-2E68-4D31-A5F7-90B4E2C6D817">
+      <Shortcut Id="AppStartMenuShortcut"
+                Name="Smart Socket"
+                Description="Watch and control the Smart Socket"
+                Target="[INSTALLFOLDER]SmartSocket.exe"
+                WorkingDirectory="INSTALLFOLDER" />
+
+      <RemoveFolder Id="RemoveAppShortcutFolder" On="uninstall" />
+
+      <!--
+        A per-user shortcut needs a per-user keypath, and a registry value is the
+        conventional one - a file in Program Files would be per-machine and the
+        component would not uninstall cleanly for a second user.
+      -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Group38\SmartSocket"
+                     Name="installed"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+    <Feature Id="Main" Title="Smart Socket" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+
+  </Package>
+</Wix>

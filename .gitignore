@@ -46,3 +46,6 @@ WhatsApp Image *.jpeg
 .idea/
 Thumbs.db
 desktop.ini
+
+# WiX build symbols.
+*.wixpdb
