@@ -65,4 +65,12 @@ enum class SocketCommand(val wire: String) {
     REARM("R"),
     PROBE("P"),
     STATUS_NOW("?"),
+
+    /**
+     * Zero the socket's lifetime cutoff count and saved-time total.
+     *
+     * They live in the socket's EEPROM, not in this app, which is why clearing
+     * the history here left them untouched and looking stuck.
+     */
+    RESET_TOTALS("Z"),
 }

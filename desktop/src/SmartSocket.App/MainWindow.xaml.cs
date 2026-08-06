@@ -341,12 +341,20 @@ public partial class MainWindow : Window
     private void OnClearHistory(object sender, RoutedEventArgs e)
     {
         var answer = MessageBox.Show(
-            "Delete every recorded charge? This cannot be undone.",
+            "Delete every recorded charge, and reset the socket's lifetime cutoff " +
+            "count and saved time?\n\nThis cannot be undone. The socket's learned " +
+            "taper calibration is kept.",
             "Clear history",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
 
-        if (answer == MessageBoxResult.Yes) Repo.History.Clear();
+        if (answer != MessageBoxResult.Yes) return;
+
+        Repo.History.Clear();
+
+        // The totals live in the socket's EEPROM, not here. Clearing only this
+        // app's list left them on screen unchanged and looking stuck.
+        if (Repo.IsConnected) _ = Repo.SendAsync(SocketCommand.ResetTotals);
     }
 
     private void OnExport(object sender, RoutedEventArgs e)

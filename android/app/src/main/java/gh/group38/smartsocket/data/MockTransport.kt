@@ -65,6 +65,12 @@ class MockTransport(private val scope: CoroutineScope) : SocketTransport {
                 }
 
             SocketCommand.STATUS_NOW -> Unit
+
+            // The demo's totals are made up fresh on every connect, so there is
+            // nothing persistent to zero - but the button must still work rather
+            // than appear broken to someone trying the app out.
+            SocketCommand.RESET_TOTALS ->
+                _status.value = now.copy(cutoffCount = 0, totalSavedMs = 0)
         }
     }
 

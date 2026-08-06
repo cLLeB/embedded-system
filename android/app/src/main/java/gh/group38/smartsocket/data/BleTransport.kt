@@ -15,10 +15,13 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.Build
 import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -51,6 +54,13 @@ class BleTransport(
         const val ConnectTimeoutMs = 15_000L
         const val DiscoverTimeoutMs = 10_000L
         const val HandshakeTimeoutMs = 10_000L
+
+        /**
+         * How long to wait for the stack to acknowledge one write before giving
+         * up on it and letting the next through. Generous for BLE, and short
+         * enough that a silent module cannot stall the queue.
+         */
+        const val WriteTimeoutMs = 600L
 
         /** A status line is longer than one BLE packet, so it arrives in pieces. */
         const val MaxLineLength = 128
@@ -282,11 +292,35 @@ class BleTransport(
 
     override suspend fun send(command: SocketCommand) = sendLine(command.wire)
 
-    override suspend fun sendLine(line: String) {
+    /**
+     * ONE WRITE AT A TIME, AND NOT NEGOTIABLE.
+     *
+     * Android's GATT stack allows a single outstanding operation per connection.
+     * Issue a second before the first has completed and it is rejected outright
+     * and silently - writeCharacteristic simply returns false, nothing is sent,
+     * and nothing tells you.
+     *
+     * This cost real debugging: the app pushes battery, limit and charging state
+     * together, and only the first of the three ever reached the socket. The LCD
+     * showed the percentage and kept saying "Ready" over a charging phone,
+     * looking for all the world like a firmware bug.
+     */
+    private val writeLock = Mutex()
+
+    /** Completed by onCharacteristicWrite, so the next write can start. */
+    @Volatile private var writeAck: CompletableDeferred<Boolean>? = null
+
+    override suspend fun sendLine(line: String) = writeLock.withLock {
+        writeLineLocked(line)
+    }
+
+    private suspend fun writeLineLocked(line: String) {
         val characteristic = writeCharacteristic ?: return
         val target = gatt ?: return
 
         val bytes = (line + "\n").toByteArray(Charsets.US_ASCII)
+        val ack = CompletableDeferred<Boolean>()
+        writeAck = ack
 
         // WriteWithoutResponse where the module allows it: these parts are slow
         // to acknowledge and a two-byte command does not need one.
@@ -311,7 +345,16 @@ class BleTransport(
         } catch (_: SecurityException) {
             // Permission revoked mid-session. The link is about to die anyway and
             // the callback reports it once.
+            writeAck = null
+            return
         }
+
+        // Wait for the stack to report the write done before releasing the lock.
+        // Timed out rather than awaited forever: a module that never
+        // acknowledges must not wedge every later command behind it, and the
+        // next write is more useful than this one was.
+        withTimeoutOrNull(WriteTimeoutMs) { ack.await() }
+        writeAck = null
     }
 
     override fun disconnect() {
@@ -453,6 +496,15 @@ class BleTransport(
 
         override fun onServicesDiscovered(g: BluetoothGatt, statusCode: Int) {
             servicesFound = statusCode == BluetoothGatt.GATT_SUCCESS
+        }
+
+        /** Releases the next queued write. See [writeLock]. */
+        override fun onCharacteristicWrite(
+            g: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            statusCode: Int,
+        ) {
+            writeAck?.complete(statusCode == BluetoothGatt.GATT_SUCCESS)
         }
 
         @Deprecated("Kept for API < 33, which never calls the byte-array overload.")

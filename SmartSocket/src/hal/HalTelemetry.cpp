@@ -104,6 +104,10 @@ void HalTelemetry::handleLine(const char* line, uint8_t len) {
       case '?':
         pending_ = Remote_StatusNow;
         break;
+      case 'Z':
+      case 'z':
+        pending_ = Remote_ResetTotals;
+        break;
       default:
         break;
     }

@@ -98,7 +98,19 @@ enum RemoteCommand {
   // suspended by this. Those are safety, not charge policy, and no client gets
   // to switch them off.
   Remote_AppManagedOn,
-  Remote_AppManagedOff
+  Remote_AppManagedOff,
+
+  // Zero the lifetime cutoff count and saved-time total.
+  //
+  // These live in EEPROM and survive reboots, power cuts and reflashing, which
+  // is what makes them useful - and what makes them impossible to clear from a
+  // client that has no way to ask. Someone who wipes the history in the app
+  // reasonably expects the totals shown beside it to go with it.
+  //
+  // The learned taper profile is deliberately NOT cleared: it is calibration,
+  // not history, and throwing it away would make the next unattended cutoff
+  // worse for no reason the user asked for.
+  Remote_ResetTotals
 };
 
 // A link to something off-board - a phone, a PC, a serial monitor.

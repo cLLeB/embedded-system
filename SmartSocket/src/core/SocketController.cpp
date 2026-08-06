@@ -426,6 +426,15 @@ void SocketController::onRemote(RemoteCommand command) {
       appManagedRefreshedMs_ = clock_.now();
       break;
 
+    case Remote_ResetTotals:
+      // Counts and saved time only. learnedTaperPct and lastPeakMa are
+      // calibration the socket earned by watching real charges, and discarding
+      // them would make the next unattended cutoff worse.
+      profile_.cutoffCount = 0;
+      profile_.totalSavedMs = 0;
+      store_.save(profile_);
+      break;
+
     case Remote_AppManagedOff:
       // Handing the decision back. The analyzer keeps running throughout, so
       // the socket resumes with a live view rather than a stale one - it does

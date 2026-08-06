@@ -924,6 +924,32 @@ TEST(handing_control_back_restores_the_taper_cutoff) {
   CHECK_EQ(rig.controller.state(), State_Cutoff);
 }
 
+TEST(a_client_can_zero_the_lifetime_totals) {
+  Rig rig;
+  cutOffLeaving(rig, 300);
+  CHECK(rig.controller.status().cutoffCount > 0);
+
+  // The totals live in EEPROM and survive everything, which is what makes them
+  // useful - and what made them impossible to clear from an app whose own
+  // history had just been wiped.
+  rig.controller.onRemote(Remote_ResetTotals);
+
+  CHECK_EQ(rig.controller.status().cutoffCount, 0);
+  CHECK_EQ(rig.controller.status().totalSavedMs, 0u);
+}
+
+TEST(zeroing_the_totals_keeps_the_learned_taper) {
+  Rig rig;
+  cutOffLeaving(rig, 300);
+  const uint16_t learned = rig.controller.status().taperRatioPct;
+
+  // Calibration the socket earned by watching real charges. Throwing it away
+  // would make the next unattended cutoff worse, and nobody asked for that.
+  rig.controller.onRemote(Remote_ResetTotals);
+
+  CHECK_EQ(rig.controller.status().taperRatioPct, learned);
+}
+
 TEST(no_remote_command_can_clear_a_stuck_relay_without_a_human) {
   Rig rig;
   cutOffLeaving(rig, 300);

@@ -193,7 +193,17 @@ class SocketViewModel(app: Application) : AndroidViewModel(app) {
         _screen.value = if (repo.isConnected) Screen.DASHBOARD else Screen.CONNECT
     }
 
-    fun clearHistory() = repo.history.clear()
+    /**
+     * Clears both halves of the record, because to the user they are one thing.
+     *
+     * The session list belongs to this app; the lifetime cutoff count and saved
+     * time belong to the socket's EEPROM. Clearing only the first left the
+     * totals on screen unchanged and looking broken.
+     */
+    fun clearHistory() {
+        repo.history.clear()
+        if (repo.isConnected) repo.send(SocketCommand.RESET_TOTALS)
+    }
 
     /** Null when there is nothing recorded yet, or the copy could not be made. */
     fun exportHistory(): Intent? =

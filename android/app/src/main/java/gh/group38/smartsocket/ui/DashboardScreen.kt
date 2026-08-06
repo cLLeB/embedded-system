@@ -19,9 +19,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -274,15 +279,50 @@ fun DashboardScreen(
             )
 
             Spacer(Modifier.height(16.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(80, 90, 100).forEach { limit ->
-                    OutlineButton(
-                        text = "$limit%",
-                        onClick = { onBatteryLimit(limit) },
-                        tint = if (limit == batteryLimit && appManaging) Gold else Muted,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
+
+            // A slider rather than three preset buttons. 80 / 90 / 100 covered
+            // the common cases and nothing else - somebody who wants 75, or 85,
+            // or 60 for a battery they are trying to nurse, had no way to say
+            // so. Five-point steps from 50 keep it easy to land on a round
+            // number with a thumb.
+            //
+            // Dragging is local; the value is committed when the finger lifts.
+            // Sending on every frame would fire a Bluetooth write per pixel.
+            var dragging by remember(batteryLimit) { mutableStateOf<Int?>(null) }
+            val shown = dragging ?: batteryLimit
+
+            Text(
+                text = "Stop at $shown%",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (appManaging) Gold else Muted,
+            )
+
+            Slider(
+                value = shown.toFloat(),
+                onValueChange = { dragging = it.toInt() },
+                onValueChangeFinished = {
+                    dragging?.let { onBatteryLimit(it) }
+                    dragging = null
+                },
+                valueRange = 50f..100f,
+                steps = 9,
+                enabled = appManaging,
+                colors = SliderDefaults.colors(
+                    thumbColor = Gold,
+                    activeTrackColor = Gold,
+                    inactiveTrackColor = Muted,
+                    disabledThumbColor = Muted,
+                    disabledActiveTrackColor = Muted,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("50%", style = MaterialTheme.typography.labelSmall, color = Muted)
+                Text("100%", style = MaterialTheme.typography.labelSmall, color = Muted)
             }
 
             Spacer(Modifier.height(12.dp))

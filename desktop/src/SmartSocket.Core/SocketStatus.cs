@@ -109,6 +109,13 @@ public enum SocketCommand
     Rearm,
     Probe,
     StatusNow,
+
+    /// <summary>
+    /// Zero the socket's lifetime cutoff count and saved-time total. They live
+    /// in the socket's EEPROM, not in the app, so clearing the app's history
+    /// left them untouched and looking stuck.
+    /// </summary>
+    ResetTotals,
 }
 
 public static class SocketCommandExtensions
@@ -119,6 +126,7 @@ public static class SocketCommandExtensions
         SocketCommand.Rearm => "R",
         SocketCommand.Probe => "P",
         SocketCommand.StatusNow => "?",
+        SocketCommand.ResetTotals => "Z",
         _ => throw new ArgumentOutOfRangeException(nameof(command)),
     };
 }
