@@ -19,6 +19,28 @@ android/.kotlin/
 *.apk
 *.aab
 
+# Release signing material. The keystore can publish updates Android accepts as
+# genuine, and the properties file holds its password in plain text. Neither
+# belongs in the repository - back the .jks up somewhere else instead, because
+# losing it means never being able to update an installed copy of the app.
+android/keystore/
+android/keystore.properties
+
+# Windows desktop app build output.
+desktop/**/bin/
+desktop/**/obj/
+desktop/dist/
+desktop/publish/
+
+# Collected installers. Build products, not sources - regenerate them with the
+# publish commands in CLAUDE.md.
+/dist/
+
+# Screenshots dropped in the root while debugging. Useful in the moment, noise
+# in the history.
+Screenshot *.png
+WhatsApp Image *.jpeg
+
 # Editor and OS noise.
 .vscode/
 .idea/
