@@ -41,6 +41,16 @@ class BatteryWatcher(
     private val _percent = MutableStateFlow(0)
     val percent: StateFlow<Int> = _percent.asStateFlow()
 
+    /**
+     * Whether this phone is taking a charge, straight from Android.
+     *
+     * The socket cannot determine this - a charging phone draws about 20 mA,
+     * below one ADC count on the ACS712-5A - so it reports a true zero and
+     * concludes the outlet is empty. This is the only place the fact exists.
+     */
+    private val _charging = MutableStateFlow(false)
+    val charging: StateFlow<Boolean> = _charging.asStateFlow()
+
     private val _limit = MutableStateFlow(prefs.getInt(KEY_LIMIT, DEFAULT_LIMIT))
     val limit: StateFlow<Int> = _limit.asStateFlow()
 
@@ -64,6 +74,10 @@ class BatteryWatcher(
         override fun onReceive(context: Context?, intent: Intent?) {
             val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
             val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+            val batteryStatus = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+            _charging.value = batteryStatus == BatteryManager.BATTERY_STATUS_CHARGING ||
+                batteryStatus == BatteryManager.BATTERY_STATUS_FULL
+
             if (level >= 0 && scale > 0) {
                 _percent.value = level * 100 / scale
                 pushBattery()

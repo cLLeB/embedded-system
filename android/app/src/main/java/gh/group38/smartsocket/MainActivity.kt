@@ -182,6 +182,7 @@ private fun App(vm: SocketViewModel, onRequestPermissions: () -> Unit) {
     val limit by vm.batteryLimit.collectAsState()
     val managing by vm.appManaging.collectAsState()
     val scanning by vm.scanning.collectAsState()
+    val phoneCharging by vm.phoneCharging.collectAsState()
     val history by vm.history.collectAsState()
     val context = LocalContext.current
 
@@ -218,6 +219,7 @@ private fun App(vm: SocketViewModel, onRequestPermissions: () -> Unit) {
                 batteryPercent = battery,
                 resumeAt = vm.resumeAt,
                 appManaging = managing,
+                phoneCharging = phoneCharging,
                 onCommand = vm::send,
                 onBatteryLimit = vm::setBatteryLimit,
                 onAppManaging = vm::setAppManaging,

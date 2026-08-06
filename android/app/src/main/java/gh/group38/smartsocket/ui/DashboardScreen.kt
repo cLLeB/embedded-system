@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
@@ -43,6 +44,12 @@ fun DashboardScreen(
     batteryPercent: Int,
     resumeAt: Int,
     appManaging: Boolean,
+
+    /**
+     * Whether Android says this phone is taking a charge. The socket cannot
+     * tell - that is the whole premise - so this is the only source of the fact.
+     */
+    phoneCharging: Boolean,
     onCommand: (SocketCommand) -> Unit,
     onBatteryLimit: (Int) -> Unit,
     onAppManaging: (Boolean) -> Unit,
@@ -131,7 +138,19 @@ fun DashboardScreen(
 
             Spacer(Modifier.height(6.dp))
             Text(
-                text = status.state.detail,
+                // "Waiting for something to be plugged in" is what the socket
+                // honestly believes, and it is wrong in the one case this app
+                // was built for. A phone charging on 230 V draws about 20 mA -
+                // below a single ADC count on the ACS712-5A, and below
+                // NoiseFloorMa - so the socket reads a true zero and concludes
+                // the outlet is empty. The phone knows better, so it says so.
+                text = if (phoneCharging && status.state == SocketState.READY) {
+                    "Your phone is charging. The socket can't see it — 20 mA is " +
+                        "smaller than its sensor can measure, which is why this " +
+                        "app exists."
+                } else {
+                    status.state.detail
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = Muted,
             )
@@ -186,7 +205,10 @@ fun DashboardScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Column {
+                // Weighted, and the percentage unwrappable. Without this the
+                // longer window text squeezed "72%" until the % wrapped onto its
+                // own line under the number.
+                Column(Modifier.weight(1f)) {
                     FieldLabel("This phone")
                     Spacer(Modifier.height(6.dp))
                     Text(
@@ -199,10 +221,13 @@ fun DashboardScreen(
                         color = Bone,
                     )
                 }
+                Spacer(Modifier.width(12.dp))
                 Text(
                     text = "$batteryPercent%",
                     style = MaterialTheme.typography.titleMedium,
                     color = if (batteryPercent >= batteryLimit) Live else Muted,
+                    maxLines = 1,
+                    softWrap = false,
                 )
             }
 

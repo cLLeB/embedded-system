@@ -52,6 +52,9 @@ class SocketViewModel(app: Application) : AndroidViewModel(app) {
     val batteryLimit: StateFlow<Int> = battery.limit
     val appManaging: StateFlow<Boolean> = battery.managing
 
+    /** Android's word on whether this phone is charging. The socket cannot say. */
+    val phoneCharging: StateFlow<Boolean> = battery.charging
+
     /** Where power comes back on, ten points below the limit. */
     val resumeAt: Int get() = battery.resumeAt
 
