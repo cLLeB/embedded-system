@@ -100,6 +100,32 @@ class SocketRepository(private val context: Context) {
      */
     fun pairedDevices(): List<SocketDevice> = bluetooth.pairedDevices() + ble.pairedDevices()
 
+    /**
+     * Devices found on the air, on top of the bonded ones.
+     *
+     * Separate because they arrive one at a time over several seconds, where the
+     * bonded list is a single synchronous answer.
+     */
+    private val _discovered = MutableStateFlow<List<SocketDevice>>(emptyList())
+    val discovered: StateFlow<List<SocketDevice>> = _discovered.asStateFlow()
+
+    /**
+     * A BLE serial module does not bond, so it never reaches Android's paired
+     * list. Scanning is the only way it can be found at all.
+     */
+    fun startScan() {
+        _discovered.value = emptyList()
+        ble.startScan { found ->
+            // Same address twice is the normal case - a scan reports a device
+            // repeatedly as long as it is advertising.
+            if (_discovered.value.none { it.address == found.address }) {
+                _discovered.value = _discovered.value + found
+            }
+        }
+    }
+
+    fun stopScan() = ble.stopScan()
+
     fun bluetoothOn(): Boolean = bluetooth.isBluetoothOn()
 
     /**

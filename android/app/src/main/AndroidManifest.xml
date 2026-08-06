@@ -10,11 +10,28 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <!--
-      BLUETOOTH_SCAN is deliberately absent. The app lists bonded devices only -
-      it never runs discovery - and getBondedDevices() is gated on
-      BLUETOOTH_CONNECT. Declaring SCAN bought no capability and cost the user a
-      "find nearby devices" prompt.
+      BLUETOOTH_SCAN, and it is not optional.
+
+      It was removed when the app listed bonded devices only, which was correct
+      then. It is back because the module turned out to be Bluetooth LE, and a
+      BLE serial module does not bond - you simply connect to it. So it never
+      appears in Android's Bluetooth settings, never reaches the paired list, and
+      cannot be found any other way. Scanning is the only route to it.
+
+      neverForLocation because this genuinely is not location work: the app is
+      looking for one socket in the room, and the declaration keeps 12+ from
+      demanding a location permission for it.
     -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+
+    <!--
+      Below 12 there is no neverForLocation flag and the platform will not return
+      BLE scan results without a location permission, however unrelated to
+      location the scan is. Capped at 30 so newer devices are never asked.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="30" />
 
     <uses-permission android:name="android.permission.BLUETOOTH"
         android:maxSdkVersion="30" />
@@ -49,9 +66,16 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 
-    <!-- Classic SPP, not BLE. An HC-05 is a Bluetooth 2.0 device. -->
+    <!--
+      Both radios. The module in this project is sold as an HC-05 - Classic 2.0
+      SPP - and is actually an HM-10 class BLE part, so the app carries a
+      transport for each and picks per device.
+    -->
     <uses-feature
         android:name="android.hardware.bluetooth"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.bluetooth_le"
         android:required="false" />
 
     <application

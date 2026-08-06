@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,11 +32,20 @@ fun ConnectScreen(
     linkState: LinkState,
     bluetoothOn: Boolean,
     permissionGranted: Boolean,
+    scanning: Boolean,
     onRequestPermission: () -> Unit,
+    onScan: () -> Unit,
     onSelect: (SocketDevice) -> Unit,
     onDemo: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Sweep as soon as the picker is reachable. A Bluetooth LE module does not
+    // bond, so it is never in the paired list and an empty screen with a button
+    // on it would be the first thing the user saw, every time.
+    LaunchedEffect(permissionGranted, bluetoothOn) {
+        if (permissionGranted && bluetoothOn) onScan()
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -53,7 +63,12 @@ fun ConnectScreen(
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "Pair the socket in your phone's Bluetooth settings first, then pick it here.",
+            text = if (scanning) {
+                "Looking for the socket…"
+            } else {
+                "Bluetooth LE modules never appear in your phone's Bluetooth settings — " +
+                    "they don't pair, they just connect. Tap Search to find one."
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = Muted,
         )
@@ -93,15 +108,27 @@ fun ConnectScreen(
 
             devices.isEmpty() -> Panel {
                 Text(
-                    text = "No paired devices",
+                    text = if (scanning) "Searching…" else "Nothing found yet",
                     style = MaterialTheme.typography.titleMedium,
                     color = Bone,
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "Pair the HC-05 in Android's Bluetooth settings. The code is usually 1234 or 0000.",
+                    text = if (scanning) {
+                        "Make sure the socket is powered and its blue light is blinking."
+                    } else {
+                        "Check the socket is powered and its light is blinking fast, then " +
+                            "search again. A Classic HC-05 needs pairing in Android's " +
+                            "Bluetooth settings first — code 1234 or 0000 — but a Bluetooth " +
+                            "LE module will only ever show up here."
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = Muted,
+                )
+                Spacer(Modifier.height(16.dp))
+                GoldButton(
+                    text = if (scanning) "Searching…" else "Search again",
+                    onClick = onScan,
                 )
             }
 
@@ -109,6 +136,18 @@ fun ConnectScreen(
                 devices.forEach { device ->
                     DeviceRow(device = device, onClick = { onSelect(device) })
                 }
+
+                Spacer(Modifier.height(6.dp))
+
+                // Still offered with a list on screen: the socket may simply not
+                // have answered the first sweep, and the alternative is the user
+                // concluding it is not there.
+                OutlineButton(
+                    text = if (scanning) "Searching…" else "Search again",
+                    onClick = onScan,
+                    tint = Muted,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
 

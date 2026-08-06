@@ -9,6 +9,9 @@ import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.Build
 import java.util.UUID
@@ -86,11 +89,13 @@ class BleTransport(
         (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
 
     /**
-     * BLE devices Android already knows about.
+     * BLE devices Android has actually bonded.
      *
-     * Bonded devices only, deliberately: a scan needs the location-adjacent scan
-     * permission and lists every fitness tracker on the bus, and the socket has
-     * to be paired to be worth connecting to anyway.
+     * USUALLY EMPTY, AND THAT IS NORMAL. Bonding is optional for BLE, and the
+     * serial modules this app talks to do not ask for it - you simply connect.
+     * So an HM-10 typically never appears in Android's Bluetooth settings at
+     * all, never becomes bonded, and cannot be found this way. [startScan] is
+     * how it is actually located; this is here for the modules that do bond.
      */
     fun pairedDevices(): List<SocketDevice> {
         val adapter = adapter() ?: return emptyList()
@@ -107,6 +112,70 @@ class BleTransport(
                 }
         } catch (_: SecurityException) {
             emptyList()
+        }
+    }
+
+    private var scanCallback: ScanCallback? = null
+
+    /**
+     * Looks for BLE devices on the air.
+     *
+     * Necessary rather than nice-to-have: a BLE serial module does not bond, so
+     * it never reaches Android's paired list and a bonded-devices lookup can
+     * never find it. Scanning is the only way it can be seen.
+     *
+     * Unfiltered on purpose. The module can be renamed by whoever configured it
+     * - this one is an HM-10 calling itself HC-05 - so filtering by name would
+     * hide exactly the device that needs finding. Unnamed results are kept too,
+     * because a module that answers a scan without a name is still connectable
+     * and its address identifies it.
+     */
+    fun startScan(onFound: (SocketDevice) -> Unit) {
+        stopScan()
+
+        val scanner = adapter()?.bluetoothLeScanner ?: return
+
+        val callback = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult) {
+                val device = result.device ?: return
+                onFound(
+                    SocketDevice(
+                        name = device.name ?: result.scanRecord?.deviceName ?: "Unnamed",
+                        address = device.address,
+                        kind = LinkKind.BLE,
+                    )
+                )
+            }
+
+            override fun onBatchScanResults(results: MutableList<ScanResult>) {
+                results.forEach { onScanResult(0, it) }
+            }
+        }
+
+        scanCallback = callback
+
+        // Low latency: the user is watching a list and waiting. A balanced scan
+        // can take tens of seconds to surface a device that is right there.
+        val settings = ScanSettings.Builder()
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .build()
+
+        try {
+            scanner.startScan(null, settings, callback)
+        } catch (_: SecurityException) {
+            scanCallback = null
+        }
+    }
+
+    fun stopScan() {
+        val callback = scanCallback ?: return
+        scanCallback = null
+
+        try {
+            adapter()?.bluetoothLeScanner?.stopScan(callback)
+        } catch (_: SecurityException) {
+            // Permission revoked, or the radio went away. Either way the scan is
+            // already over.
         }
     }
 

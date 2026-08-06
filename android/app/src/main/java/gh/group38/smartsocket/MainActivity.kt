@@ -51,15 +51,20 @@ class MainActivity : ComponentActivity() {
      * manifest permissions are granted at install, so there is nothing to ask
      * for and the request must be skipped rather than failed.
      *
-     * BLUETOOTH_SCAN is deliberately not here. The app lists bonded devices
-     * only - it never runs discovery - and getBondedDevices() is gated on
-     * BLUETOOTH_CONNECT. Asking for SCAN as well bought nothing and put a
-     * "find nearby devices" prompt in front of the user for a capability the
-     * app does not use.
+     * BLUETOOTH_SCAN is required, not optional: the module is Bluetooth LE and
+     * a BLE serial module does not bond, so it never reaches the paired list and
+     * scanning is the only way to find it.
+     *
+     * Below 12 the platform withholds BLE scan results without a location
+     * permission, however unrelated to location the scan is - so that has to be
+     * asked for there and only there.
      */
     private val permissions: Array<String> = buildList {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             add(Manifest.permission.BLUETOOTH_CONNECT)
+            add(Manifest.permission.BLUETOOTH_SCAN)
+        } else {
+            add(Manifest.permission.ACCESS_FINE_LOCATION)
         }
         // 13+ made notifications opt-in. Asked for alongside Bluetooth rather
         // than at the moment of the first cutoff, which would be the worst
@@ -72,9 +77,9 @@ class MainActivity : ComponentActivity() {
     /** Bluetooth is what gates the device list; notifications are a bonus. */
     private val bluetoothPermissions: Array<String> =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            arrayOf(Manifest.permission.BLUETOOTH_CONNECT)
+            arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
         } else {
-            emptyArray()
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
         }
 
     private val requestPermissions =
@@ -176,6 +181,7 @@ private fun App(vm: SocketViewModel, onRequestPermissions: () -> Unit) {
     val battery by vm.batteryPercent.collectAsState()
     val limit by vm.batteryLimit.collectAsState()
     val managing by vm.appManaging.collectAsState()
+    val scanning by vm.scanning.collectAsState()
     val history by vm.history.collectAsState()
     val context = LocalContext.current
 
@@ -194,7 +200,9 @@ private fun App(vm: SocketViewModel, onRequestPermissions: () -> Unit) {
                 linkState = link,
                 bluetoothOn = vm.bluetoothOn(),
                 permissionGranted = granted,
+                scanning = scanning,
                 onRequestPermission = onRequestPermissions,
+                onScan = vm::startScan,
                 onSelect = vm::connect,
                 onDemo = vm::openDemo,
                 modifier = Modifier.windowInsetsPadding(WindowInsets.systemBars),

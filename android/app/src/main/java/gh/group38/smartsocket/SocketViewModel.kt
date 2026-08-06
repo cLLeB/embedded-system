@@ -11,6 +11,7 @@ import gh.group38.smartsocket.data.MockTransport
 import gh.group38.smartsocket.data.SocketCommand
 import gh.group38.smartsocket.data.SocketDevice
 import gh.group38.smartsocket.data.SocketStatus
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -107,7 +108,56 @@ class SocketViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun refreshDevices() {
-        _devices.value = if (_permissionGranted.value) repo.pairedDevices() else emptyList()
+        if (!_permissionGranted.value) {
+            _devices.value = emptyList()
+            return
+        }
+
+        // Bonded first, then whatever the scan has turned up. A BLE serial
+        // module does not bond, so for this project the second list is the one
+        // that matters - but a Classic HC-05 would only ever be in the first.
+        val bonded = repo.pairedDevices()
+        val scanned = repo.discovered.value.filter { found ->
+            bonded.none { it.address == found.address }
+        }
+
+        _devices.value = bonded + scanned
+    }
+
+    /** True while the radio is being swept. Drives the "Looking…" line. */
+    private val _scanning = MutableStateFlow(false)
+    val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
+
+    /**
+     * Starts a sweep and keeps the list live while it runs.
+     *
+     * Bounded rather than left running: a BLE scan is one of the more expensive
+     * things an app can do to a phone's battery, and leaving it on because the
+     * user wandered off with the picker open would be indefensible in an app
+     * whose entire purpose is looking after batteries.
+     */
+    fun startScan() {
+        if (!_permissionGranted.value) return
+        if (_scanning.value) return
+
+        _scanning.value = true
+        repo.startScan()
+
+        viewModelScope.launch {
+            val deadline = System.currentTimeMillis() + SCAN_DURATION_MS
+            while (System.currentTimeMillis() < deadline && _scanning.value) {
+                refreshDevices()
+                delay(500)
+            }
+            stopScan()
+        }
+    }
+
+    fun stopScan() {
+        if (!_scanning.value) return
+        _scanning.value = false
+        repo.stopScan()
+        refreshDevices()
     }
 
     fun bluetoothOn(): Boolean = repo.bluetoothOn()
@@ -150,7 +200,17 @@ class SocketViewModel(app: Application) : AndroidViewModel(app) {
         refreshDevices()
     }
 
+    override fun onCleared() {
+        // A scan left running after the screen is gone is a battery leak in an
+        // app about battery care.
+        repo.stopScan()
+        super.onCleared()
+    }
+
     private companion object {
         const val KEY_ONBOARDED = "onboarded"
+
+        /** Long enough to find a module in the room, short enough to end. */
+        const val SCAN_DURATION_MS = 12_000L
     }
 }
