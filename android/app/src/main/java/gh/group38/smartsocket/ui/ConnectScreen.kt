@@ -225,12 +225,26 @@ private fun DeviceRow(device: SocketDevice, onClick: () -> Unit) {
             // saying out loud rather than leaving the user to wonder why two
             // identically-named devices behave differently.
             Text(
-                text = when (device.kind) {
-                    gh.group38.smartsocket.data.LinkKind.BLE ->
-                        "${device.address}  ·  Bluetooth LE"
-                    gh.group38.smartsocket.data.LinkKind.CLASSIC ->
-                        "${device.address}  ·  Bluetooth Classic"
-                    gh.group38.smartsocket.data.LinkKind.DEMO -> device.address
+                text = buildString {
+                    append(device.address)
+                    when (device.kind) {
+                        gh.group38.smartsocket.data.LinkKind.BLE -> append("  ·  Bluetooth LE")
+                        gh.group38.smartsocket.data.LinkKind.CLASSIC -> append("  ·  Bluetooth Classic")
+                        gh.group38.smartsocket.data.LinkKind.DEMO -> Unit
+                    }
+                    // Distance, roughly. The socket is the one in front of you,
+                    // so "very close" is the strongest hint available for
+                    // telling it from a neighbour's phone.
+                    device.rssi?.let { rssi ->
+                        append(
+                            when {
+                                rssi >= -55 -> "  ·  very close"
+                                rssi >= -70 -> "  ·  nearby"
+                                rssi >= -85 -> "  ·  far"
+                                else -> "  ·  very far"
+                            }
+                        )
+                    }
                 },
                 style = MaterialTheme.typography.labelSmall,
                 color = Faint,

@@ -143,6 +143,7 @@ class BleTransport(
                         name = device.name ?: result.scanRecord?.deviceName ?: "Unnamed",
                         address = device.address,
                         kind = LinkKind.BLE,
+                        rssi = result.rssi,
                     )
                 )
             }

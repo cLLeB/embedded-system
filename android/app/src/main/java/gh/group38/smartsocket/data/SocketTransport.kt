@@ -27,6 +27,17 @@ data class SocketDevice(
     val name: String,
     val address: String,
     val kind: LinkKind = LinkKind.CLASSIC,
+
+    /**
+     * Signal strength in dBm from the last scan, or null if not from a scan.
+     *
+     * Worth carrying because a BLE sweep in a building returns dozens of
+     * results, most of them unnamed phones and watches using rotating private
+     * addresses. The socket is the one on the desk in front of you, so it is
+     * reliably the strongest - which makes this the only practical way to pick
+     * it out of the list.
+     */
+    val rssi: Int? = null,
 ) {
     val isDemo: Boolean get() = kind == LinkKind.DEMO
 

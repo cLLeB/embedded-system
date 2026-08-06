@@ -116,10 +116,24 @@ class SocketRepository(private val context: Context) {
     fun startScan() {
         _discovered.value = emptyList()
         ble.startScan { found ->
-            // Same address twice is the normal case - a scan reports a device
-            // repeatedly as long as it is advertising.
-            if (_discovered.value.none { it.address == found.address }) {
-                _discovered.value = _discovered.value + found
+            // Same address repeatedly is the normal case - a device is reported
+            // on every advertisement. Later sightings replace earlier ones so
+            // the signal strength stays current, and a name that only appeared
+            // in a later packet is not thrown away.
+            val existing = _discovered.value.firstOrNull { it.address == found.address }
+
+            _discovered.value = if (existing == null) {
+                _discovered.value + found
+            } else {
+                _discovered.value.map {
+                    if (it.address != found.address) {
+                        it
+                    } else {
+                        found.copy(
+                            name = if (found.name == "Unnamed") it.name else found.name
+                        )
+                    }
+                }
             }
         }
     }

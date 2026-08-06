@@ -117,9 +117,20 @@ class SocketViewModel(app: Application) : AndroidViewModel(app) {
         // module does not bond, so for this project the second list is the one
         // that matters - but a Classic HC-05 would only ever be in the first.
         val bonded = repo.pairedDevices()
-        val scanned = repo.discovered.value.filter { found ->
-            bonded.none { it.address == found.address }
-        }
+
+        // Named first, then strongest first.
+        //
+        // A sweep in a building returns dozens of results, nearly all of them
+        // unnamed phones and watches using rotating private addresses. The
+        // socket is the thing on the desk in front of you, so it is reliably the
+        // loudest - which makes signal strength the only practical way to find
+        // it in that list.
+        val scanned = repo.discovered.value
+            .filter { found -> bonded.none { it.address == found.address } }
+            .sortedWith(
+                compareBy<SocketDevice> { it.name == "Unnamed" }
+                    .thenByDescending { it.rssi ?: Int.MIN_VALUE }
+            )
 
         _devices.value = bonded + scanned
     }
