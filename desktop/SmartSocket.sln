@@ -1,0 +1,43 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{E61A29E1-6E0C-4F01-9E26-C66E2D2D46A4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SmartSocket.Core", "src\SmartSocket.Core\SmartSocket.Core.csproj", "{4B6B55AD-877D-4F53-A5B0-3CF8F91074FE}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{8FBE5AB6-DF34-4DB9-90F9-18091A712558}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SmartSocket.Core.Tests", "tests\SmartSocket.Core.Tests\SmartSocket.Core.Tests.csproj", "{C0B60E43-CA81-4295-9DC8-CB17E50104ED}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SmartSocket.App", "src\SmartSocket.App\SmartSocket.App.csproj", "{8A85455D-EC36-4A29-B24B-E907A51125EA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4B6B55AD-877D-4F53-A5B0-3CF8F91074FE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4B6B55AD-877D-4F53-A5B0-3CF8F91074FE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4B6B55AD-877D-4F53-A5B0-3CF8F91074FE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4B6B55AD-877D-4F53-A5B0-3CF8F91074FE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C0B60E43-CA81-4295-9DC8-CB17E50104ED}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C0B60E43-CA81-4295-9DC8-CB17E50104ED}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C0B60E43-CA81-4295-9DC8-CB17E50104ED}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C0B60E43-CA81-4295-9DC8-CB17E50104ED}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8A85455D-EC36-4A29-B24B-E907A51125EA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8A85455D-EC36-4A29-B24B-E907A51125EA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8A85455D-EC36-4A29-B24B-E907A51125EA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8A85455D-EC36-4A29-B24B-E907A51125EA}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{4B6B55AD-877D-4F53-A5B0-3CF8F91074FE} = {E61A29E1-6E0C-4F01-9E26-C66E2D2D46A4}
+		{C0B60E43-CA81-4295-9DC8-CB17E50104ED} = {8FBE5AB6-DF34-4DB9-90F9-18091A712558}
+		{8A85455D-EC36-4A29-B24B-E907A51125EA} = {E61A29E1-6E0C-4F01-9E26-C66E2D2D46A4}
+	EndGlobalSection
+EndGlobal

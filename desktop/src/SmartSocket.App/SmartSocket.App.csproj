@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+
+    <!--
+      The Windows 10 SDK flavour of the TFM, not plain net8.0-windows. That is
+      what projects the WinRT Bluetooth LE APIs into .NET, and BLE is the only
+      way to reach a GATT module - System.IO.Ports cannot see one, because a BLE
+      device is never given a COM port.
+    -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+
+    <!--
+      WinForms alongside WPF, purely for NotifyIcon. WPF has no tray icon of its
+      own, and the tray is what lets the window close while the socket stays
+      watched - the desktop equivalent of the phone's foreground service.
+    -->
+    <UseWindowsForms>true</UseWindowsForms>
+
+    <AssemblyName>SmartSocket</AssemblyName>
+    <RootNamespace>SmartSocket.App</RootNamespace>
+    <Version>1.0.0</Version>
+    <Product>Smart Socket</Product>
+    <Company>Group 38</Company>
+
+    <!-- Publish settings for a single file anyone can double-click. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+
+    <!--
+      Trimming is off on purpose. WPF is not trim-safe, and a trimmed build that
+      throws MissingMethodException on a screen nobody tested is a worse trade
+      than a larger file.
+    -->
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SmartSocket.Core\SmartSocket.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.IO.Ports" Version="10.0.10" />
+    <!-- SystemEvents.PowerModeChanged: instant reaction to the charger going in
+         or out, rather than waiting for the next poll. -->
+    <PackageReference Include="Microsoft.Win32.SystemEvents" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>
